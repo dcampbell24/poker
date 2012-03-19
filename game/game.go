@@ -2,6 +2,7 @@ package game
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"net"
@@ -11,91 +12,42 @@ import (
 
 const ACPCversion = "VERSION:2.0.0\r\n"
 
-// The fields of the ACPC state string.
-const (
-	_ = iota
-	POSITION
-	HAND_NUM
-	BETS
-	CARDS
-)
-
-type Player interface {
-	Play(g *Game) (action byte)
-}
-
-type Rules struct {
-	descr       string
-	limit       bool
-	numPlayers  int
-	stack       []int
-	blind       []int
-	raiseSize   []float64
-	firstPlayer []int
-	maxRaises   []int
-}
-
-var (
-	Holdem2p = &Rules{
-		descr:       "two player limit Texas Hold'em",
-		limit:       true,
-		numPlayers:  2,
-		blind:       []int{10, 5},
-		raiseSize:   []float64{10.0, 10.0, 20.0, 20.0},
-		firstPlayer: []int{2, 1, 1, 1},
-		maxRaises:   []int{3, 4, 4, 4},
-	}
-
-	Holdem3p = &Rules{
-		descr:       "three player limit Texas Hold'em",
-		limit:       true,
-		numPlayers:  3,
-		blind:       []int{5, 10, 0},
-		raiseSize:   []float64{10.0, 10.0, 20.0, 20.0},
-		firstPlayer: []int{3, 1, 1, 1},
-		maxRaises:   []int{3, 4, 4, 4},
-	}
-
-	HoldemNolimit2p = &Rules{
-		descr:       "two player no limit Texas Hold'em",
-		limit:       false,
-		numPlayers:  2,
-		stack:       []int{20000, 20000},
-		blind:       []int{100, 50},
-		firstPlayer: []int{2, 1, 1, 1},
-	}
-
-	HoldemNolimit3p = &Rules{
-		descr:       "three player no limit Texas Hold'em",
-		limit:       false,
-		numPlayers:  3,
-		stack:       []int{20000, 20000, 20000},
-		blind:       []int{50, 100, 0},
-		firstPlayer: []int{3, 1, 1, 1},
-	}
-)
-
 type Cards struct {
 	Holes, Board []string
 }
 
-type Game struct {
-	position     int     // Position relative to the dealer button.
-	handNumber   string  // Unique identifier for each hand.
-	bets         string  // A String representing all betting actions.
-	*Cards               // A vector of cards of the form [[holes][board]].
-	Pot          float64 // The current amount of chips in the pot.
-	Call         float64
-	Raise        float64
-	folded       []bool // Whether a player has folded or not.
-	activePlayer int    // The player whose turn it is to act.
-	*Rules              // The set of rules to use to play the game.
-	round        int    // The current round of betting.
-	numActive    int    // The number of players who have not folded.
+func (this *Cards) String() string {
+	return fmt.Sprintf("%v  %v", this.Holes, this.Board)
 }
 
-func newGame(r *Rules) *Game {
-	return &Game{folded: make([]bool, r.numPlayers), Rules: r}
+type ACPCString struct {
+	position int    // Position relative to the dealer button.
+	handNum  string // Unique identifier for each hand.
+	bets     string // A String representing all betting actions.
+	*Cards          // A vector of cards of the form [[holes][board]]
+}
+
+func (this *ACPCString) Round() int {
+	switch len(this.Cards.Board) {
+	case 0:
+		return 0 // pre-flop
+	case 3:
+		return 1 // flop
+	case 4:
+		return 2 // turn
+	case 5:
+		return 3 // river
+	}
+	return -1
+}
+
+// RoundActions returns a string of all the actions taken during the current betting round.
+func (this *ACPCString) RoundActions() string {
+	if this.bets == "" {
+		return ""
+	}
+	s := strings.Split(this.bets, "/")
+	return s[len(s)-1]
 }
 
 func splitCards(s string) []string {
@@ -110,22 +62,65 @@ func splitCards(s string) []string {
 	return a[:na]
 }
 
-// Convert an ACPC cards string into Cards.
-func parseCards(s string) *Cards {
-	s1 := strings.SplitN(s, "/", 2) // Split into [holeCards boardCards]
-	if len(s1) == 1 {
-		return &Cards{Holes: splitCards(s1[0])}
+// The fields of the ACPC state string.
+const (
+	_ = iota
+	POSITION
+	HAND_NUM
+	BETS
+	CARDS
+)
+
+func NewACPCString(s string) *ACPCString {
+	var err error
+	acpc := new(ACPCString)
+	state := strings.Split(s, ":")
+	acpc.position, err = strconv.Atoi(state[POSITION])
+	if err != nil {
+		panic(err)
 	}
-	return &Cards{splitCards(s1[0]), splitCards(s1[1])}
+	acpc.handNum = state[HAND_NUM]
+	acpc.bets = state[BETS]
+	// Split into [holeCards boardCards]
+	if s := strings.SplitN(state[CARDS], "/", 2); len(s) == 1 {
+		acpc.Cards = &Cards{Holes: splitCards(s[0])}
+	} else {
+		acpc.Cards = &Cards{splitCards(s[0]), splitCards(s[1])}
+	}
+	return acpc
 }
 
-// RoundActions returns a string of all the actions taken during the current betting round.
-func (g *Game) RoundActions() string {
-	if g.bets == "" {
-		return ""
+
+type Player interface {
+	Play(g *Game) (action byte)
+}
+
+type Game struct {
+	*ACPCString          // Basic game state from the server string.
+	Pot          float64 // The current amount of chips in the pot.
+	Call         float64 // The amount to Call
+	Raise        float64 // The amount to Raise
+	lstAct       []byte  // The last action a player took.
+	activePlayer int     // The player whose turn it is to act.
+	*Rules               // The set of rules to use to play the game.
+	numActive    int     // The number of players who have not folded.
+}
+
+func (this *Game) String() string {
+	b := new(bytes.Buffer)
+	fmt.Fprintf(b, "Pot: %.2f\n", this.Pot)
+	fmt.Fprintf(b, "%v\n[", this.Cards)
+
+	for i, action := range this.lstAct {
+		if i == this.activePlayer {
+			fmt.Fprintf(b, " (%s) ", string(action))
+		} else {
+			fmt.Fprintf(b, " %s ", string(action))
+		}
 	}
-	s := strings.Split(g.bets, "/")
-	return s[len(s)-1]
+	b.WriteString("]\n")
+	fmt.Fprintf(b, "Call: %.2f Raise: %.2f\n", this.Call, this.Raise)
+	return b.String()
 }
 
 // nextPlayer returns the seat of the next player who can still take an action.
@@ -136,14 +131,14 @@ func (g *Game) nextPlayer() int {
 		return -1
 	// Start of a new betting round
 	case g.RoundActions() == "":
-		return g.Rules.firstPlayer[g.round] - 1
+		return g.Rules.firstPlayer[g.Round()] - 1
 		fmt.Println("New Round")
 	}
 
 	i := g.activePlayer
 	for {
-		i = (i + 1) % len(g.folded)
-		if !g.folded[i] {
+		i = (i + 1) % len(g.lstAct)
+		if g.lstAct[i] != 'f' {
 			return i
 		}
 	}
@@ -177,39 +172,41 @@ func (g *Game) calcPot() float64 {
 
 // Update the card game using the match-state string."
 func (g *Game) updateGame(s string) {
-	var err error
-	state := strings.Split(s, ":")
-	g.position, err = strconv.Atoi(state[POSITION])
-	if err != nil {
-		panic(err.Error())
-	}
-	g.bets = state[BETS]
-	g.Cards = parseCards(state[CARDS])
-	g.round = strings.Count(state[CARDS], "/")
+	state := NewACPCString(s)
+	newHand := g.handNum != state.handNum
+	g.ACPCString = state
 	g.Pot = g.calcPot()
 
 	// Determine Call and Raise sizes.
 	if len(g.bets) == 0 {
-		g.Call = float64(g.Rules.raiseSize[g.round]) * 0.5
+		g.Call = float64(g.Rules.raiseSize[g.Round()]) * 0.5
 	} else if g.bets[len(g.bets)-1] == 'r' {
-		g.Call = float64(g.Rules.raiseSize[g.round])
+		g.Call = float64(g.Rules.raiseSize[g.Round()])
 	} else {
 		g.Call = 0.0
 	}
-	g.Raise = g.Call + g.Rules.raiseSize[g.round]
+	g.Raise = g.Call + g.Rules.raiseSize[g.Round()]
 
-	// Determine who has folded.
-	if state[HAND_NUM] != g.handNumber {
-		for i := 0; i < len(g.folded); i++ {
-			g.folded[i] = false
+	// Update players with the last action each took.
+	if newHand {
+		for i := 0; i < len(g.lstAct); i++ {
+			g.lstAct[i] = '#'
 		}
-		g.numActive = len(g.folded)
-	} else if g.bets[len(g.bets)-1] == 'f' {
-		g.folded[g.activePlayer] = true
-		g.numActive--
+		g.numActive = len(g.lstAct)
+	} else if len(g.RoundActions()) == 0 {
+		for i := 0; i < len(g.lstAct); i++ {
+			if g.lstAct[i] != 'f' {
+				g.lstAct[i] = '/'
+			}
+		}
+	} else {
+		g.lstAct[g.activePlayer] = g.bets[len(g.bets)-1]
+		if g.lstAct[g.activePlayer] == 'f' {
+			g.numActive--
+		}
 	}
 	g.activePlayer = g.nextPlayer()
-	g.handNumber = state[HAND_NUM]
+	//fmt.Println(g)
 }
 
 // Start playing a game.
@@ -223,12 +220,18 @@ func Play(rules string, p Player, host, port string) {
 	conn, err := net.Dial("tcp", addr)
 	defer conn.Close()
 	if err != nil {
-		panic(err.Error())
+		panic(err)
 	}
 
 	fmt.Printf("Starting a game of %s...\n", rules)
 	conn.Write([]byte(ACPCversion))
-	game := newGame(Holdem2p)
+
+	// FIXME: don't hard code the ruleset.
+	game := new(Game)
+	game.lstAct = make([]byte, Holdem2p.numPlayers)
+	game.Rules = Holdem2p
+	game.ACPCString = &ACPCString{handNum:"nil"}
+
 	reader := bufio.NewReader(conn)
 	msg := []byte("")
 	for {
@@ -243,7 +246,7 @@ func Play(rules string, p Player, host, port string) {
 			fmt.Println("Shutting down...")
 			return
 		case err != nil:
-			panic(err.Error())
+			panic(err)
 		// ";" and "#" are comment lines.
 		case len(msg) < 1 || msg[0] == ';' || msg[0] == '#':
 			continue
@@ -262,7 +265,7 @@ func (g *Game) LegalActions() []byte {
 	if g.Call > 0 {
 		actions = append(actions, 'f')
 	}
-	if strings.Count(g.RoundActions(), "r") < g.Rules.maxRaises[g.round] {
+	if strings.Count(g.RoundActions(), "r") < g.Rules.maxRaises[g.Round()] {
 		actions = append(actions, 'r')
 	}
 	return actions
