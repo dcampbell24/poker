@@ -24,21 +24,8 @@ type ACPCString struct {
 	position int    // Position relative to the dealer button.
 	handNum  string // Unique identifier for each hand.
 	bets     string // A String representing all betting actions.
-	*Cards          // A vector of cards of the form [[holes][board]]
-}
-
-func (this *ACPCString) Round() int {
-	switch len(this.Cards.Board) {
-	case 0:
-		return 0 // pre-flop
-	case 3:
-		return 1 // flop
-	case 4:
-		return 2 // turn
-	case 5:
-		return 3 // river
-	}
-	return -1
+	round    int    // 0-3: pre-flop, flop, turn, river.
+	*Cards
 }
 
 // RoundActions returns a string of all the actions taken during the current betting round.
@@ -81,6 +68,7 @@ func NewACPCString(s string) *ACPCString {
 	}
 	acpc.handNum = state[HAND_NUM]
 	acpc.bets = state[BETS]
+	acpc.round = strings.Count(state[BETS], "/")
 	// Split into [holeCards boardCards]
 	if s := strings.SplitN(state[CARDS], "/", 2); len(s) == 1 {
 		acpc.Cards = &Cards{Holes: splitCards(s[0])}
@@ -131,7 +119,7 @@ func (g *Game) nextPlayer() int {
 		return -1
 	// Start of a new betting round
 	case g.RoundActions() == "":
-		return g.Rules.firstPlayer[g.Round()] - 1
+		return g.Rules.firstPlayer[g.round] - 1
 		fmt.Println("New Round")
 	}
 
@@ -179,13 +167,13 @@ func (g *Game) updateGame(s string) {
 
 	// Determine Call and Raise sizes.
 	if len(g.bets) == 0 {
-		g.Call = float64(g.Rules.raiseSize[g.Round()]) * 0.5
+		g.Call = float64(g.Rules.raiseSize[g.round]) * 0.5
 	} else if g.bets[len(g.bets)-1] == 'r' {
-		g.Call = float64(g.Rules.raiseSize[g.Round()])
+		g.Call = float64(g.Rules.raiseSize[g.round])
 	} else {
 		g.Call = 0.0
 	}
-	g.Raise = g.Call + g.Rules.raiseSize[g.Round()]
+	g.Raise = g.Call + g.Rules.raiseSize[g.round]
 
 	// Update players with the last action each took.
 	if newHand {
@@ -265,7 +253,7 @@ func (g *Game) LegalActions() []byte {
 	if g.Call > 0 {
 		actions = append(actions, 'f')
 	}
-	if strings.Count(g.RoundActions(), "r") < g.Rules.maxRaises[g.Round()] {
+	if strings.Count(g.RoundActions(), "r") < g.Rules.maxRaises[g.round] {
 		actions = append(actions, 'r')
 	}
 	return actions
