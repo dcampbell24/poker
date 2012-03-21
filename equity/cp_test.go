@@ -13,10 +13,8 @@ func TestReadTable (_ *testing.T) {
 	fmt.Println(table1.P())
 	fmt.Println(table1.PCR())
 
-
 	table2 := ReadTable("snowday.txt")
 	fmt.Println(table2)
 	fmt.Println(table2.P())
 	fmt.Println(table2.PCR())
-
 }

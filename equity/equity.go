@@ -222,25 +222,32 @@ func evalHands(board []uint32, hands ...[]uint32) []float64 {
 	return result
 }
 
-// Calculate the probability of having a given class of hole cards.
-func PHole(scards []string, hd *HandDist) float64 {
-	// Remove seen cards from the deck.
-	cards := cardsToInts(scards)
-	deck := NewDeck(cards...)
-
-	// calculate the ratio dist : all-hands.
-	// FIXME Might want to work in big.Int instead of converting back to uint. Could
-	// there be overflow here?
-	combs := uint64(comb.Count(big.NewInt(int64(len(deck))), comb.TWO).Int64())
-	allHands := make([][]uint32, combs)
-	c := comb.Generator(deck, 2)
-	hand := make([]uint32, 2)
-	for i := uint64(0); i < combs; i++ {
-		c(hand)
-		copy(allHands[i], hand)
+// PHole returns the probability of having a given class of hole cards given
+// that scards have already been seen.
+//
+// Here are two example calculations:
+//	          Me   Opp  Board  P(AA)
+//	Pre-deal  ??   ??   ???    (4 choose 2) / (52 choose 2) ~= 0.0045
+//	Pre-flop  AKs  ??   ???    (3 choose 2) / (50 choose 2) ~= 0.0024
+func PHole(hd *HandDist, scards []string) float64 {
+	holes := hd.Ints()
+	// Count how many hands to eliminate from the holes class because a card in
+	// that hand has already been seen.
+	elim := 0
+	for _, hand := range holes {
+		for _, card := range hand {
+			for _, seen := range cardsToInts(scards) {
+				if card == seen {
+					elim++
+					goto nextHand
+				}
+			}
+		}
+		nextHand:
 	}
-	hands := hd.Ints()
-    return float64(len(intersect(hands, allHands))) / float64(len(allHands))
+	deck := int64(52 - len(scards))
+	allHands := float64(comb.Count(big.NewInt(deck), big.NewInt(2)).Int64())
+	return float64(len(holes) - elim) / allHands
 }
 
 
@@ -253,12 +260,6 @@ func PHole(scards []string, hd *HandDist) float64 {
 // Weisstein, Eric W. "Conditional Probability." From MathWorld--A Wolfram Web
 // Resource. http://mathworld.wolfram.com/ConditionalProbability.html
 //
-// P(hole) is calculated by dividing the number of hands included in a
-// class by the total possible number of hands. Cards that have been seen are
-// eliminated from the possible hands.
-// 	          Me   Opp  Board  P(AA)
-//	Pre-deal  ??   ??   ???    (4 choose 2) / (52 choose 2) ~= 0.0045
-//  Pre-flop  AKs  ??   ???    (3 choose 2) / (50 choose 2) ~= 0.0024
 
 // Given a game's card string and the conditional probabilities P(action | hole),
 // calculates the probabilities P(hole | action).

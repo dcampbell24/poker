@@ -69,9 +69,10 @@ func Fact(n *big.Int) *big.Int {
 	}
 
 	sum := big.NewInt(1)
-	for n.Cmp(ONE) != -1 {
-		sum.Mul(sum, n)
-		n.Sub(n, ONE)
+	n0 := new(big.Int).Set(n)
+	for n0.Cmp(ONE) != -1 {
+		sum.Mul(sum, n0)
+		n0.Sub(n0, ONE)
 	}
 	return sum
 }
@@ -80,11 +81,12 @@ func Fact(n *big.Int) *big.Int {
 // This is an optimization to avoid calculating large factorials.
 // Note: n must be less than m.
 func div(m, n *big.Int) *big.Int {
-	sum := new(big.Int).Add(n, ONE)
-	n.Add(n, TWO)
-	for n.Cmp(m) != 1  {
-		sum.Mul(sum, n)
-		n.Add(n, ONE)
+	n0 := new(big.Int).Set(n)
+	sum := new(big.Int).Add(n0, ONE)
+	n0.Add(n0, TWO)
+	for n0.Cmp(m) != 1  {
+		sum.Mul(sum, n0)
+		n0.Add(n0, ONE)
 	}
 	return sum
 }

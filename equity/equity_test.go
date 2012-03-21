@@ -24,8 +24,9 @@ func TestNewLottery(_ *testing.T) {
 	lotto := NewLottery(map[string]float64{"a": 0.4, "b": 0.1, "c": 0.5, "d": 0})
 	fmt.Println(lotto)
 	for i := 0; i < 10; i++ {
-		fmt.Println(lotto.Play())
+		fmt.Printf("%d:%s ", i, lotto.Play())
 	}
+	fmt.Println()
 }
 
 func checkCategory(expected uint32, hand []string, test *testing.T) {
@@ -50,5 +51,16 @@ func TestEvalHand(test *testing.T) {
 	lp := []string{"2c", "2d", "4s", "5h", "7d", "8c", "9c"} // low pair
 	if EvalHand(hp) <= EvalHand(lp) {
 		test.Fatalf("The high pair %v did not beat the low pair %v.\n", hp, lp)
+	}
+}
+
+func TestPHole(test *testing.T) {
+	p1 := 0.004524886877828055
+	p2 := 0.0024489795918367346
+	if p := PHole(&HandDist{"AA"}, []string{}); p != p1 {
+		test.Fatalf("P(AA) should have been %f, but was %f\n", p1, p)
+	}
+	if p := PHole(&HandDist{"AA"}, []string{"As", "Ks"}); p != p2  {
+		test.Fatal("P(AA | AKs) should have been %f, but was %f.\n", p2, p)
 	}
 }
