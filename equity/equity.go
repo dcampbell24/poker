@@ -150,18 +150,6 @@ func (this *HandDist) Ints() [][]uint32 {
 	return hands
 }
 
-// Create a HandDist from rank, rank, suit int values.
-func NewRRSDist(r1, r2, suit int) *HandDist {
-	hand := []byte{ranks[r1-2], ranks[r2-2]}
-	switch {
-	case r1 == r2:
-		return &HandDist{string(hand)}              // pair
-	case suit > 0:
-		return &HandDist{string(append(hand, 's'))} // suited
-	}
-	return &HandDist{string(append(hand, 'o'))}     // offsuit
-}
-
 func evalBoard(cards []uint32) uint32 {
 	v := hr[53+cards[0]]
 	v = hr[v+cards[1]]
