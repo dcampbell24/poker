@@ -82,6 +82,8 @@ func (this *Table) PCR() *PTable {
 	return &PTable{table}
 }
 
+// Ppoker
+
 func (this *Table) String() string {
 	rsums, csums, total := this.Sums()
 	width := len(fmt.Sprintf("%.0f", total))

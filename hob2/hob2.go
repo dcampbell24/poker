@@ -29,7 +29,7 @@ func (_ *randPlayer) Play(g *game.Game) byte {
 
 func (p *stratPlayer) Play(g *game.Game) byte {
 	if len(g.RoundActions()) == 0 {
-		p.equity = equity.HandEquity2(g.Cards.Holes[:2], g.Cards.Board, 1000)
+		p.equity = equity.HandEquityP(g.Cards.Holes[:2], g.Cards.Board, 1000)
 	}
 
 	max := math.Inf(-1)

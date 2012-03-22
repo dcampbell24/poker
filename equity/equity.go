@@ -40,6 +40,7 @@ const (
 var hr [32487834]uint32
 var CTOI map[string]uint32
 var NCPU int // How many cpus to use for the equity calculations.
+var RANDS []*rand.Rand
 
 func init() {
 	fmt.Print("Loading HandRanks.dat... ")
@@ -73,10 +74,11 @@ func init() {
 	}
 
 	NCPU = runtime.NumCPU()
-	// FIXME: Increasing the number of CPUs slows the program down and makes the
-	// outcomes non-deterministic.
-	//runtime.GOMAXPROCS(NCPU)
-	//fmt.Printf("Using %d CPUs\n", NCPU)
+	for i := 0; i < NCPU; i++ {
+		RANDS = append(RANDS, rand.New(rand.NewSource(rand.Int63())))
+	}
+	runtime.GOMAXPROCS(NCPU)
+	fmt.Printf("Using %d CPUs\n", NCPU)
 }
 
 func NewDeck(missing ...uint32) []uint32 {
@@ -250,7 +252,10 @@ func PHole(hd *HandDist, scards []string) float64 {
 	return float64(len(holes) - elim) / allHands
 }
 
-
+/*
+// FIXME
+// CondProbs returns the PTable for P(hole | action) given the cards that have
+// currently been seen, and the probabilties P(action) and P(action | hole).
 // The formula for calculating the conditional probability P(hole | action):
 //
 //	                   P(hole) * P(action | hole)
@@ -260,14 +265,11 @@ func PHole(hd *HandDist, scards []string) float64 {
 // Weisstein, Eric W. "Conditional Probability." From MathWorld--A Wolfram Web
 // Resource. http://mathworld.wolfram.com/ConditionalProbability.html
 //
-
-// Given a game's card string and the conditional probabilities P(action | hole),
-// calculates the probabilities P(hole | action).
-//func CondProbs(cards []string HandDist) map[string] string {
-//	for _, vals := range actionDist {
-//		NewRRSDist(actionDist[:3]...) (* (PHole cards [r1 r2 s]) prob)])]
-//  (apply array-map (flatten values))))
-// FIXME
+func CondProbs(scards []string, pActHole *PTable, pAction []float64) *PTable {
+	for _, vals := range actionDist {
+		NewRRSDist(actionDist[:3]...) (* (PHole cards [r1 r2 s]) prob)])]
+  (apply array-map (flatten values))))
+*/
 
 type Lottery struct {
 	// Maybe should use ints or fixed point to make more accurate.
@@ -349,18 +351,18 @@ func intersect(a, b [][]uint32) [][]uint32 {
 	return c[:count]
 }
 
-func shuffle(a []uint32) {
+// Fisher–Yates shuffle
+// r is the rand.Rand to use.
+func shuffle(a []uint32, r int) {
 	for i := len(a) - 1; i > 0; i-- {
-		j := rand.Intn(i + 1)
+		j := RANDS[r].Intn(i + 1)
 		a[j], a[i] = a[i], a[j]
 	}
 }
 
-// HandEquity returns the equity of a player's hand based on the current
-// board.  trials is the number of Monte-Carlo simulations to do.  If trials
-// is 0, then exhaustive enumeration will be used instead.
-func HandEquity(sHand, sBoard []string, trials int, c chan float64) {
-	sum := 0.0
+// Get ready to do the hand equity calculations. Returns hand, board, bLen,
+// deck.
+func handEquityInit(sHand, sBoard []string) ([]uint32, []uint32, uint32, []uint32) {
 	// Convert the cards from strings to ints.
 	hole := cardsToInts(sHand)
 	bLen := uint32(len(sBoard)) // How many cards will we need to draw?
@@ -368,47 +370,73 @@ func HandEquity(sHand, sBoard []string, trials int, c chan float64) {
 	for i, v := range sBoard {
 		board[i] = CTOI[v]
 	}
-
 	// Remove the hole and board cards from the deck.
 	deck := NewDeck(append(hole, board...)...)
+	return hole, board, bLen, deck
+}
 
-	if trials == 0 {
-		var count float64
-		// Exhaustive enumeration.
-		oHole := make([]uint32, 2, 2)
-		loop1, loop2 := true, true
-		c1 := comb.Generator(deck, 2)
-		for loop1 {
-			loop1 = c1(oHole)
-			c2 := comb.Generator(minus(deck, oHole), 5-bLen)
-			for loop2 {
-				loop2 = c2(board[bLen:])
-				sum += evalHands(board, hole, oHole)[0]
-				count++
-			}
+// Exhaustive hand equity calculation.
+func handEquityE(hole, board []uint32, bLen uint32, deck []uint32) float64 {
+	var sum, count float64
+	oHole := make([]uint32, 2, 2)
+	loop1, loop2 := true, true
+	c1 := comb.Generator(deck, 2)
+	for loop1 {
+		loop1 = c1(oHole)
+		c2 := comb.Generator(minus(deck, oHole), 5-bLen)
+		for loop2 {
+			loop2 = c2(board[bLen:])
+			sum += evalHands(board, hole, oHole)[0]
+			count++
 		}
-		c <- sum / count
-	} else {
-		// Monte-Carlo
-		for i := 0; i < trials; i++ {
-			shuffle(deck)
-			copy(board[bLen:], deck[2:8-bLen])
-			sum += evalHands(board, hole, deck[:2])[0]
-		}
-		c <- sum / float64(trials)
 	}
+	return sum / count
+}
+
+// Monte-Carlo hand equity calculation.
+func handEquityMC(hole, board []uint32, bLen uint32, deck []uint32, trials, r int) float64 {
+	var sum float64
+	for i := 0; i < trials; i++ {
+		shuffle(deck, r)
+		copy(board[bLen:], deck[2:8-bLen])
+		sum += evalHands(board, hole, deck[:2])[0]
+	}
+	return sum / float64(trials)
+}
+
+// Parallel Monte-Carlo hand equity calculation.
+func handEquityMCP(hole, board []uint32, bLen uint32, deck []uint32, trials int,
+	c chan float64, sums []float64, i int) {
+	sums[i] = handEquityMC(hole, board, bLen, deck, trials, i)
+	c <- 1.0
+}
+
+// HandEquity returns the equity of a player's hand based on the current
+// board.  trials is the number of Monte-Carlo simulations to do.  If trials
+// is 0, then exhaustive enumeration will be used instead.
+func HandEquity(sHand, sBoard []string, trials int) float64 {
+	hole, board, Blen, deck := handEquityInit(sHand, sBoard)
+	if trials == 0 {
+		return handEquityE(hole, board, Blen, deck)
+	}
+	return handEquityMC(hole, board, Blen, deck, trials, 0)
 }
 
 // Parallel version of HandEquity.
-func HandEquity2(sHand, sBoard []string, trials int) float64 {
-	sum := 0.0
+func HandEquityP(sHand, sBoard []string, trials int) float64 {
+	sums := make([]float64, NCPU)
 	trials += trials % NCPU // Round to a multiple of the number of CPUs.
     c := make(chan float64) // Not buffering
     for i := 0; i < NCPU; i++ {
-        go HandEquity(sHand, sBoard, trials/NCPU, c)
+		hole, board, bLen, deck := handEquityInit(sHand, sBoard)
+        go handEquityMCP(hole, board, bLen, deck, trials/NCPU, c, sums, i)
     }
     for i := 0; i < NCPU; i++ {
-        sum += <-c
+        <-c
     }
+	sum := 0.0
+	for i := range sums {
+		sum += sums[i]
+	}
 	return sum / float64(NCPU)
 }
