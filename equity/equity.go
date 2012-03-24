@@ -37,8 +37,8 @@ const (
 	suits = "cdhs"
 )
 
-var hr [32487834]uint32
-var CTOI map[string]uint32
+var hr [32487834]int32
+var CTOI map[string]int32
 var NCPU int // How many cpus to use for the equity calculations.
 var RANDS []*rand.Rand
 
@@ -56,16 +56,16 @@ func init() {
 		panic(err)
 	}
 	for i := 0; i < len(buf); i += 4 {
-		hr[i/4] = uint32(buf[i+3])<<24 |
-			uint32(buf[i+2])<<16 |
-			uint32(buf[i+1])<<8 |
-			uint32(buf[i])
+		hr[i/4] = int32(buf[i+3])<<24 |
+			int32(buf[i+2])<<16 |
+			int32(buf[i+1])<<8 |
+			int32(buf[i])
 	}
 	fmt.Println("Done")
 
 	// Initialize CTOI
-	CTOI = make(map[string]uint32, 52)
-	var k uint32 = 1
+	CTOI = make(map[string]int32, 52)
+	var k int32 = 1
 	for i := 0; i < len(ranks); i++ {
 		for j := 0; j < len(suits); j++ {
 			CTOI[string([]byte{ranks[i], suits[j]})] = k
@@ -73,6 +73,10 @@ func init() {
 		}
 	}
 
+	// Initialize the PRNGs
+	// BUG(David): The PRNGs are not being used in a way that guarentees their
+	// independence and their state space is much smaller than that of a deck of
+	// cards.
 	NCPU = runtime.NumCPU()
 	for i := 0; i < NCPU; i++ {
 		RANDS = append(RANDS, rand.New(rand.NewSource(rand.Int63())))
@@ -81,10 +85,10 @@ func init() {
 	fmt.Printf("Using %d CPUs\n", NCPU)
 }
 
-func NewDeck(missing ...uint32) []uint32 {
-	deck := make([]uint32, 52, 52)
+func NewDeck(missing ...int32) []int32 {
+	deck := make([]int32, 52, 52)
 	for i := 0; i < 52; i++ {
-		deck[i] = uint32(i + 1)
+		deck[i] = int32(i + 1)
 	}
 	if len(missing) > 0 {
 		deck = minus(deck, missing)
@@ -92,8 +96,8 @@ func NewDeck(missing ...uint32) []uint32 {
 	return deck
 }
 
-func cardsToInts(cards []string) []uint32 {
-	ints := make([]uint32, len(cards), len(cards))
+func cardsToInts(cards []string) []int32 {
+	ints := make([]int32, len(cards), len(cards))
 	for i, c := range cards {
 		ints[i] = CTOI[c]
 	}
@@ -142,17 +146,17 @@ func (this *HandDist) Strs() [][]string {
 	return hands
 }
 
-// The same as Strs, only return the hands represented by uint32s.
-func (this *HandDist) Ints() [][]uint32 {
+// The same as Strs, only return the hands represented by int32.
+func (this *HandDist) Ints() [][]int32 {
 	shands := this.Strs()
-	hands := make([][]uint32, len(shands))
+	hands := make([][]int32, len(shands))
 	for i := range shands {
 		hands[i] = cardsToInts(shands[i])
 	}
 	return hands
 }
 
-func evalBoard(cards []uint32) uint32 {
+func evalBoard(cards []int32) int32 {
 	v := hr[53+cards[0]]
 	v = hr[v+cards[1]]
 	v = hr[v+cards[2]]
@@ -160,30 +164,24 @@ func evalBoard(cards []uint32) uint32 {
 	return hr[v+cards[4]]
 }
 
-func evalHand(b uint32, cards []uint32) uint32 {
+func evalHand(b int32, cards []int32) int32 {
 	b = hr[b+cards[0]]
 	return hr[b+cards[1]]
 }
 
-func EvalHand(cards []string) uint32 {
+func EvalHand(cards []string) int32 {
 	hand := cardsToInts(cards)
-	v := hr[53+hand[0]]
-	v = hr[v+hand[1]]
-	v = hr[v+hand[2]]
-	v = hr[v+hand[3]]
-	v = hr[v+hand[4]]
-	v = hr[v+hand[5]]
-	return hr[v+hand[6]]
+	return evalHand(evalBoard(hand[:5]), hand[5:])
 }
 
 
 // Split a hand rank into two values: category and rank-within-category.
-func SplitRank(rank uint32) (uint32, uint32) {
+func SplitRank(rank int32) (int32, int32) {
 	return rank >> 12, rank & 0xFFF
 }
 
 // Calculate the percent of the pot each hand wins and return them as a slice.
-func EvalHands(board []uint32, hands ...[]uint32) []float64 {
+func EvalHands(board []int32, hands ...[]int32) []float64 {
 	b := evalBoard(board)
 	// Optimize case where there are only two hands.
 	if len(hands) == 2 {
@@ -197,7 +195,7 @@ func EvalHands(board []uint32, hands ...[]uint32) []float64 {
 			return []float64{0.5, 0.5}
 		}
 	}
-	vals := make([]uint32, len(hands), len(hands))
+	vals := make([]int32, len(hands), len(hands))
 	for i, hand := range hands {
 		vals[i] = evalHand(b, hand)
 	}
@@ -314,8 +312,8 @@ func (this *Lottery) Play() string {
 }
 
 // Safe subtraction of integer sets.
-func minus(a, b []uint32) []uint32 {
-	c := make([]uint32, len(a), len(a))
+func minus(a, b []int32) []int32 {
+	c := make([]int32, len(a), len(a))
 	var count int
 	var match bool
 	for _, v := range a {
@@ -336,7 +334,7 @@ func minus(a, b []uint32) []uint32 {
 
 // Fisher–Yates shuffle
 // r is the rand.Rand to use.
-func shuffle(a []uint32, r int) {
+func shuffle(a []int32, r int) {
 	for i := len(a) - 1; i > 0; i-- {
 		j := RANDS[r].Intn(i + 1)
 		a[j], a[i] = a[i], a[j]
@@ -345,11 +343,11 @@ func shuffle(a []uint32, r int) {
 
 // Get ready to do the hand equity calculations. Returns hand, board, bLen,
 // deck.
-func handEquityInit(sHand, sBoard []string) ([]uint32, []uint32, uint32, []uint32) {
+func handEquityInit(sHand, sBoard []string) ([]int32, []int32, int32, []int32) {
 	// Convert the cards from strings to ints.
 	hole := cardsToInts(sHand)
-	bLen := uint32(len(sBoard)) // How many cards will we need to draw?
-	board := make([]uint32, 5, 5)
+	bLen := int32(len(sBoard)) // How many cards will we need to draw?
+	board := make([]int32, 5, 5)
 	for i, v := range sBoard {
 		board[i] = CTOI[v]
 	}
@@ -359,15 +357,14 @@ func handEquityInit(sHand, sBoard []string) ([]uint32, []uint32, uint32, []uint3
 }
 
 // Exhaustive hand equity calculation.
-func handEquityE(hole, board []uint32, bLen uint32, deck []uint32) float64 {
+func handEquityE(hole, board []int32, bLen int32, deck []int32) float64 {
 	var sum, count float64
-	oHole := make([]uint32, 2, 2)
-	loop1, loop2 := true, true
+	oHole := make([]int32, 2, 2)
 	c1 := comb.Generator(deck, 2)
-	for loop1 {
+	for loop1 := true; loop1; {
 		loop1 = c1(oHole)
 		c2 := comb.Generator(minus(deck, oHole), 5-bLen)
-		for loop2 {
+		for loop2 := true; loop2; {
 			loop2 = c2(board[bLen:])
 			sum += EvalHands(board, hole, oHole)[0]
 			count++
@@ -377,7 +374,7 @@ func handEquityE(hole, board []uint32, bLen uint32, deck []uint32) float64 {
 }
 
 // Monte-Carlo hand equity calculation.
-func handEquityMC(hole, board []uint32, bLen uint32, deck []uint32, trials, r int) float64 {
+func handEquityMC(hole, board []int32, bLen int32, deck []int32, trials, r int) float64 {
 	var sum float64
 	for i := 0; i < trials; i++ {
 		shuffle(deck, r)
@@ -388,7 +385,7 @@ func handEquityMC(hole, board []uint32, bLen uint32, deck []uint32, trials, r in
 }
 
 // Parallel Monte-Carlo hand equity calculation.
-func handEquityMCP(hole, board []uint32, bLen uint32, deck []uint32, trials int,
+func handEquityMCP(hole, board []int32, bLen int32, deck []int32, trials int,
 c chan float64, i int) {
 	c <- handEquityMC(hole, board, bLen, deck, trials, i)
 }
