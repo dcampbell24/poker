@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"math"
 	"math/rand"
 	"os"
 	"runtime/pprof"
@@ -32,7 +31,7 @@ func (p *stratPlayer) Play(g *game.Game) byte {
 		p.equity = equity.HandEquity(g.Cards.Holes[:2], g.Cards.Board, 1000)
 	}
 
-	max := math.Inf(-1)
+	max := 0.0 // Folding has EV = 0
 	action := byte('f')
 	if ev := (p.equity * (g.Pot + g.Call)) - g.Call; ev >= max {
 		action = 'c'
