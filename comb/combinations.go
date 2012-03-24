@@ -4,11 +4,6 @@ import (
 	"math/big"
 )
 
-var (
-	ONE = big.NewInt(1)
-	TWO = big.NewInt(2)
-)
-
 // Comb takes a slice and a number of elements to choose from that slice and
 // returns a function that given a slice will fill it in with a combination
 // until none are left, at which point it will return false.
@@ -64,15 +59,15 @@ incr:
 // Fact returns n! (factorial).
 // Returns 1 for negative values.
 func Fact(n *big.Int) *big.Int {
-	if n.Cmp(TWO) == -1 {
-		return ONE
+	if n.Cmp(big.NewInt(2)) == -1 {
+		return big.NewInt(1)
 	}
 
 	sum := big.NewInt(1)
 	n0 := new(big.Int).Set(n)
-	for n0.Cmp(ONE) != -1 {
+	for n0.Cmp(big.NewInt(1)) != -1 {
 		sum.Mul(sum, n0)
-		n0.Sub(n0, ONE)
+		n0.Sub(n0, big.NewInt(1))
 	}
 	return sum
 }
@@ -82,11 +77,11 @@ func Fact(n *big.Int) *big.Int {
 // Note: n must be less than m.
 func div(m, n *big.Int) *big.Int {
 	n0 := new(big.Int).Set(n)
-	sum := new(big.Int).Add(n0, ONE)
-	n0.Add(n0, TWO)
+	sum := new(big.Int).Add(n0, big.NewInt(1))
+	n0.Add(n0, big.NewInt(2))
 	for n0.Cmp(m) != 1  {
 		sum.Mul(sum, n0)
-		n0.Add(n0, ONE)
+		n0.Add(n0, big.NewInt(1))
 	}
 	return sum
 }
@@ -94,7 +89,7 @@ func div(m, n *big.Int) *big.Int {
 // Choose returns the number of combinations for n choose k.
 func Count(n, k *big.Int) *big.Int {
 	if n.Cmp(k) == 0 {
-		return ONE
+		return big.NewInt(1)
 	}
 	s := new(big.Int).Sub(n, k)
 	if k.Cmp(s) == 1 {
