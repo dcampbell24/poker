@@ -183,7 +183,7 @@ func SplitRank(rank uint32) (uint32, uint32) {
 }
 
 // Calculate the percent of the pot each hand wins and return them as a slice.
-func evalHands(board []uint32, hands ...[]uint32) []float64 {
+func EvalHands(board []uint32, hands ...[]uint32) []float64 {
 	b := evalBoard(board)
 	// Optimize case where there are only two hands.
 	if len(hands) == 2 {
@@ -334,23 +334,6 @@ func minus(a, b []uint32) []uint32 {
 	return c[:count]
 }
 
-// intersect returns the intersection of the sets a and b.
-// len(a) <= len(b) should be true for best performance.
-func intersect(a, b [][]uint32) [][]uint32 {
-	c := make([][]uint32, len(a), len(a))
-	var count int
-	for _, v := range a {
-		for _, w := range b {
-			if (v[0] == w[0] && v[1] == w[1]) || (v[0] == w[1] && v[1] == w[0]) {
-				c[count] = v
-				count++
-				break
-			}
-		}
-	}
-	return c[:count]
-}
-
 // Fisher–Yates shuffle
 // r is the rand.Rand to use.
 func shuffle(a []uint32, r int) {
@@ -371,7 +354,7 @@ func handEquityInit(sHand, sBoard []string) ([]uint32, []uint32, uint32, []uint3
 		board[i] = CTOI[v]
 	}
 	// Remove the hole and board cards from the deck.
-	deck := NewDeck(append(hole, board...)...)
+	deck := NewDeck(append(hole, board[:bLen]...)...)
 	return hole, board, bLen, deck
 }
 
@@ -386,7 +369,7 @@ func handEquityE(hole, board []uint32, bLen uint32, deck []uint32) float64 {
 		c2 := comb.Generator(minus(deck, oHole), 5-bLen)
 		for loop2 {
 			loop2 = c2(board[bLen:])
-			sum += evalHands(board, hole, oHole)[0]
+			sum += EvalHands(board, hole, oHole)[0]
 			count++
 		}
 	}
@@ -399,16 +382,15 @@ func handEquityMC(hole, board []uint32, bLen uint32, deck []uint32, trials, r in
 	for i := 0; i < trials; i++ {
 		shuffle(deck, r)
 		copy(board[bLen:], deck[2:8-bLen])
-		sum += evalHands(board, hole, deck[:2])[0]
+		sum += EvalHands(board, hole, deck[:2])[0]
 	}
 	return sum / float64(trials)
 }
 
 // Parallel Monte-Carlo hand equity calculation.
 func handEquityMCP(hole, board []uint32, bLen uint32, deck []uint32, trials int,
-	c chan float64, sums []float64, i int) {
-	sums[i] = handEquityMC(hole, board, bLen, deck, trials, i)
-	c <- 1.0
+c chan float64, i int) {
+	c <- handEquityMC(hole, board, bLen, deck, trials, i)
 }
 
 // HandEquity returns the equity of a player's hand based on the current
@@ -424,19 +406,15 @@ func HandEquity(sHand, sBoard []string, trials int) float64 {
 
 // Parallel version of HandEquity.
 func HandEquityP(sHand, sBoard []string, trials int) float64 {
-	sums := make([]float64, NCPU)
 	trials += trials % NCPU // Round to a multiple of the number of CPUs.
-    c := make(chan float64) // Not buffering
-    for i := 0; i < NCPU; i++ {
+	c := make(chan float64) // Not buffering
+	for i := 0; i < NCPU; i++ {
 		hole, board, bLen, deck := handEquityInit(sHand, sBoard)
-        go handEquityMCP(hole, board, bLen, deck, trials/NCPU, c, sums, i)
-    }
-    for i := 0; i < NCPU; i++ {
-        <-c
-    }
+		go handEquityMCP(hole, board, bLen, deck, trials/NCPU, c, i)
+	}
 	sum := 0.0
-	for i := range sums {
-		sum += sums[i]
+	for i := 0; i < NCPU; i++ {
+		sum += <-c
 	}
 	return sum / float64(NCPU)
 }
