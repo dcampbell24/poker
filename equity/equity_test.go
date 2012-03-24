@@ -54,6 +54,13 @@ func TestEvalHand(test *testing.T) {
 	}
 }
 
+func TestEvalHands(_ *testing.T) {
+	board := cardsToInts([]string{"4s", "5h", "7d", "8c", "9c"})
+	hp := cardsToInts([]string{"Ac", "Ad"})
+	lp := cardsToInts([]string{"2c", "2d"})
+	fmt.Println(EvalHands(board, hp, lp))
+}
+
 func TestPHole(test *testing.T) {
 	p1 := 0.004524886877828055
 	p2 := 0.0024489795918367346
@@ -63,4 +70,14 @@ func TestPHole(test *testing.T) {
 	if p := PHole(&HandDist{"AA"}, []string{"As", "Ks"}); p != p2  {
 		test.Fatal("P(AA | AKs) should have been %f, but was %f.\n", p2, p)
 	}
+}
+
+func TestHandEquity(_ *testing.T) {
+	fmt.Println(HandEquity([]string{"2d", "2c"},[]string{}, 0))
+	fmt.Println(HandEquity([]string{"2d", "3c"},[]string{}, 0))
+	fmt.Println(HandEquity([]string{"Ad", "Ac"},[]string{}, 0))
+}
+
+func TestNewDeck(_ *testing.T) {
+	fmt.Println(NewDeck(1, 2, 3, 4, 5))
 }
