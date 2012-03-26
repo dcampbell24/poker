@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"strconv"
 	"strings"
@@ -58,13 +59,13 @@ const (
 	CARDS
 )
 
-func NewACPCString(s string) *ACPCString {
+func NewACPCString(s string) (*ACPCString, error) {
 	var err error
 	acpc := new(ACPCString)
 	state := strings.Split(s, ":")
 	acpc.position, err = strconv.Atoi(state[POSITION])
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	acpc.handNum = state[HAND_NUM]
 	acpc.bets = state[BETS]
@@ -75,7 +76,7 @@ func NewACPCString(s string) *ACPCString {
 	} else {
 		acpc.Cards = &Cards{splitCards(s[0]), splitCards(s[1])}
 	}
-	return acpc
+	return acpc, nil
 }
 
 
@@ -160,7 +161,10 @@ func (g *Game) calcPot() float64 {
 
 // Update the card game using the match-state string."
 func (g *Game) updateGame(s string) {
-	state := NewACPCString(s)
+	state, err := NewACPCString(s)
+	if err != nil {
+		log.Fatalln("updateGame: malformed state string:", err)
+	}
 	newHand := g.handNum != state.handNum
 	g.ACPCString = state
 	g.Pot = g.calcPot()
@@ -208,7 +212,7 @@ func Play(rules string, p Player, host, port string) {
 	conn, err := net.Dial("tcp", addr)
 	defer conn.Close()
 	if err != nil {
-		panic(err)
+		log.Fatalln(err)
 	}
 
 	fmt.Printf("Starting a game of %s...\n", rules)
@@ -222,6 +226,7 @@ func Play(rules string, p Player, host, port string) {
 
 	reader := bufio.NewReader(conn)
 	msg := []byte("")
+	//actions := map[byte]int{'f', 'c', 'r'}
 	for {
 		piece, frag, err := reader.ReadLine()
 		if frag {
@@ -234,7 +239,7 @@ func Play(rules string, p Player, host, port string) {
 			fmt.Println("Shutting down...")
 			return
 		case err != nil:
-			panic(err)
+			log.Fatalln(err)
 		// ";" and "#" are comment lines.
 		case len(msg) < 1 || msg[0] == ';' || msg[0] == '#':
 			continue

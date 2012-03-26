@@ -27,6 +27,7 @@ import (
 	"math/rand"
 	"os"
 	"io"
+	"log"
 	"runtime"
 
 	"poker/comb"
@@ -39,7 +40,8 @@ const (
 
 var hr [32487834]int32
 var CTOI map[string]int32
-var NCPU int // How many cpus to use for the equity calculations.
+// How many cpus to use for the equity calculations.
+var NCPU int
 var RANDS []*rand.Rand
 
 func init() {
@@ -48,12 +50,12 @@ func init() {
 	buf := make([]byte, len(hr)*4, len(hr)*4)
 	fp, err := os.Open("HandRanks.dat")
 	if err != nil {
-		panic(err)
+		log.Fatalln(err)
 	}
 	defer fp.Close()
 	_, err = io.ReadFull(fp, buf)
 	if err != nil {
-		panic(err)
+		log.Fatalln(err)
 	}
 	for i := 0; i < len(buf); i += 4 {
 		hr[i/4] = int32(buf[i+3])<<24 |

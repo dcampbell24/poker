@@ -109,10 +109,10 @@ func (this *Table) String() string {
 	return b.String()
 }
 
-func ReadTable(file string) *Table {
+func ReadTable(file string) (*Table, error) {
 	bs, err := ioutil.ReadFile(file)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	lines := strings.Split(strings.TrimSpace(string(bs)), "\n")
 	rlbs := strings.Fields(lines[0])
@@ -122,15 +122,14 @@ func ReadTable(file string) *Table {
 		fs := strings.Fields(line)
 		table.Rows[i] = fs[0]
 		for j, val := range fs[1:] {
-			//v, err := strconv.Atoi(val)
 			v, err := strconv.ParseFloat(val, 64)
 			if err != nil {
-				panic(err)
+				return nil, err
 			}
 			table.Set(i, j, v)
 		}
 	}
-	return table
+	return table, nil
 }
 
 func mul(a, b *Table) *Table {
