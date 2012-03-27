@@ -37,7 +37,7 @@ func (p *stratPlayer) Play(g *game.Game) byte {
 		action = 'c'
 		max = ev
 	}
-	if (p.equity*(g.Pot+g.Raise))-g.Raise >= max {
+	if (p.equity*(g.Pot+2*g.Raise-g.Call))-g.Raise >= max {
 		action = 'r'
 	}
 	if bytes.IndexByte(g.LegalActions(), action) != -1 {
