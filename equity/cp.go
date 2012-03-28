@@ -10,20 +10,15 @@ import (
 
 type Table struct {
 	Data       []float64
-	Stride     int
 	Rows, Cols []string // row and column labels
 }
 
-func (this *Table) NumRows() int {
-	return len(this.Data) / this.Stride
-}
-
 func (this *Table) At(i, j int) float64 {
-	return this.Data[int(i)*this.Stride+j]
+	return this.Data[int(i)*len(this.Cols)+j]
 }
 
 func (this *Table) Set(i, j int, v float64) {
-	this.Data[int(i)*this.Stride+j] = v
+	this.Data[int(i)*len(this.Cols)+j] = v
 }
 
 func sum(nums []float64) float64 {
@@ -36,11 +31,11 @@ func sum(nums []float64) float64 {
 
 // Sums returns the the row and column sums as slices and the grand total.
 func (this *Table) Sums() ([]float64, []float64, float64) {
-	rsums := make([]float64, this.NumRows())
-	csums := make([]float64, this.Stride)
+	rsums := make([]float64, len(this.Rows))
+	csums := make([]float64, len(this.Cols))
 	for i, val := range this.Data {
-		rsums[int(i)/this.Stride] += val
-		csums[int(i)%this.Stride] += val
+		rsums[int(i)/len(this.Cols)] += val
+		csums[int(i)%len(this.Cols)] += val
 	}
 
 	total := 0.0
@@ -55,8 +50,8 @@ func (this *Table) Sums() ([]float64, []float64, float64) {
 // P returns a table showing the probabilities of the row field given the column
 // field.
 func (this *Table) P() *PTable {
-	table := &Table{Data: make([]float64, this.NumRows()*(this.Stride+1)),
-		Stride: this.Stride+1, Rows: this.Rows, Cols: append(this.Cols, "?")}
+	table := &Table{Data: make([]float64, len(this.Rows)*(len(this.Cols)+1)),
+		Rows: this.Rows, Cols: append(this.Cols, "?")}
 	rsums, csums, total := this.Sums()
 	for i := range this.Rows {
 		table.Set(i, len(table.Cols)-1, rsums[i] / total)
@@ -70,8 +65,8 @@ func (this *Table) P() *PTable {
 // PCR returns a table showing the probabilities of the column field given the
 // row field.
 func (this *Table) PCR() *PTable {
-	table := &Table{Data: make([]float64, (this.NumRows()+1)*this.Stride),
-		Stride: this.Stride, Rows: append(this.Rows, "?"), Cols: this.Cols}
+	table := &Table{Data: make([]float64, (len(this.Rows)+1)*len(this.Cols)),
+		Rows: append(this.Rows, "?"), Cols: this.Cols}
 	rsums, csums, total := this.Sums()
 	for j := range this.Cols {
 		table.Set(len(table.Rows)-1, j, csums[j] / total)
@@ -91,10 +86,9 @@ func (this *Table) String() string {
 		fmt.Fprintf(b, "%-*s  ", width, col)
 	}
 	b.WriteString("\n")
-	rows := this.NumRows()
-	for line := 0; line < rows; line++ {
+	for line := range this.Rows {
 		fmt.Fprintf(b, "%-4s  ", this.Rows[line])
-		for i := 0; i < this.Stride; i++ {
+		for i := range this.Cols {
 			fmt.Fprintf(b, "%*.0f  ", width, this.At(line, i))
 		}
 		fmt.Fprintf(b, "%*.0f\n", width, rsums[line])
@@ -115,7 +109,7 @@ func ReadTable(file string) (*Table, error) {
 	lines := strings.Split(strings.TrimSpace(string(bs)), "\n")
 	rlbs := strings.Fields(lines[0])
 	table := &Table{Data: make([]float64, len(rlbs)*(len(lines)-1)),
-		Stride: len(rlbs), Rows: make([]string, len(lines)-1), Cols: rlbs}
+		Rows: make([]string, len(lines)-1), Cols: rlbs}
 	for i, line := range lines[1:] {
 		fs := strings.Fields(line)
 		table.Rows[i] = fs[0]
@@ -128,20 +122,6 @@ func ReadTable(file string) (*Table, error) {
 		}
 	}
 	return table, nil
-}
-
-func mul(a, b *Table) *Table {
-	rows := a.NumRows()
-	cols := b.Stride
-	c := &Table{Data: make([]float64, rows*cols), Stride: cols}
-	for m := 0; m < rows; m++ {
-		for n := 0; n < cols; n++ {
-			for i := 0; i < a.Stride; i++ {
-				c.Set(m, n, c.At(m, n)+a.At(m, i)*b.At(i, n))
-			}
-		}
-	}
-	return c
 }
 
 type PTable struct {
@@ -157,10 +137,9 @@ func (this *PTable) String() string {
 		fmt.Fprintf(b, "%-*s  ", width, col)
 	}
 	b.WriteString("\n")
-	rows := this.NumRows()
-	for line := 0; line < rows; line++ {
+	for line := range this.Rows {
 		fmt.Fprintf(b, "%-4s  ", this.Rows[line])
-		for i := 0; i < this.Stride; i++ {
+		for i := range this.Cols {
 			fmt.Fprintf(b, "%*f  ", width, this.At(line, i))
 		}
 		b.WriteString("\n")
