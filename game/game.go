@@ -121,7 +121,6 @@ func (g *Game) nextPlayer() int {
 	// Start of a new betting round
 	case g.RoundActions() == "":
 		return g.Rules.firstPlayer[g.round] - 1
-		fmt.Println("New Round")
 	}
 
 	i := g.activePlayer
@@ -159,7 +158,7 @@ func (g *Game) calcPot() float64 {
 	return sum
 }
 
-// Update the card game using the match-state string."
+// Update the card game using the match-state string.
 func (g *Game) updateGame(s string) {
 	state, err := NewACPCString(s)
 	if err != nil {
@@ -198,7 +197,6 @@ func (g *Game) updateGame(s string) {
 		}
 	}
 	g.activePlayer = g.nextPlayer()
-	//fmt.Println(g)
 }
 
 // Start playing a game.
@@ -226,7 +224,6 @@ func Play(rules string, p Player, host, port string) {
 
 	reader := bufio.NewReader(conn)
 	msg := []byte("")
-	//actions := map[byte]int{'f', 'c', 'r'}
 	for {
 		piece, frag, err := reader.ReadLine()
 		if frag {
