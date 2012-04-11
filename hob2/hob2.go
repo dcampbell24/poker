@@ -66,6 +66,7 @@ func chooseStrat(name, strat string) (game.Player, error) {
 
 func main() {
 	prof := flag.Bool("prof", false, "Create a pprof profile.")
+	rules := flag.String("rules", "2p-l", "What rules to use.")
 	strat := flag.String("strat", "7cHS", "What strategy to use.")
 	flag.Parse()
 	if *prof {
@@ -80,5 +81,5 @@ func main() {
 	if err != nil {
 		log.Fatalln("Failed to create player:", err)
 	}
-	game.Play("2p-l", player, flag.Arg(0), flag.Arg(1))
+	game.Play(*rules, player, flag.Arg(0), flag.Arg(1))
 }
