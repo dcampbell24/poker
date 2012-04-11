@@ -205,6 +205,17 @@ func (g *Game) updateGame(s string) {
 //	host  -- the InetAddress of the dealer passed as a String
 //	port  -- the port the dealer is listening on for the client passed as a String
 func Play(rules string, p Player, host, port string) {
+	var err error
+	// Initialize the game state.
+	game := new(Game)
+	game.Rules, err = ChooseRules(rules)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	game.lstAct = make([]byte, game.Rules.numPlayers)
+	game.ACPCString = &ACPCString{handNum:"nil"}
+
+	// Connect to the dealer.
 	addr := net.JoinHostPort(host, port)
 	fmt.Printf("Connecting to dealer at %s...\n", addr)
 	conn, err := net.Dial("tcp", addr)
@@ -213,15 +224,11 @@ func Play(rules string, p Player, host, port string) {
 		log.Fatalln(err)
 	}
 
+	// Tell the dealer I am ready to start.
 	fmt.Printf("Starting a game of %s...\n", rules)
 	conn.Write([]byte(ACPCversion))
 
-	// FIXME: don't hard code the ruleset.
-	game := new(Game)
-	game.lstAct = make([]byte, Holdem2p.numPlayers)
-	game.Rules = Holdem2p
-	game.ACPCString = &ACPCString{handNum:"nil"}
-
+	// Read replies from dealer one line at a time.
 	reader := bufio.NewReader(conn)
 	msg := []byte("")
 	for {
