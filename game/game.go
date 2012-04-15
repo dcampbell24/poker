@@ -126,7 +126,7 @@ func (this *Game) Update(s string) error {
 		this.Bets[this.Actor] += this.CallAmt()
 	case "r":
 		this.Raises++
-		this.Bets[this.Actor] += this.CallAmt() + this.raiseSize[this.Round]
+		this.Bets[this.Actor] += this.RaiseAmt()
 	}
 	if this.NumActive() < 2 {
 		this.Actor = -1
