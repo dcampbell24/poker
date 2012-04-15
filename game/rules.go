@@ -7,7 +7,7 @@ type Rules struct {
 	limit       bool
 	numPlayers  int
 	stack       []int
-	blind       []int
+	blind       []float64
 	raiseSize   []float64
 	firstPlayer []int
 	maxRaises   []int
@@ -20,7 +20,7 @@ func ChooseRules(rules string) (*Rules, error) {
 			descr:       "two player limit Texas Hold'em",
 			limit:       true,
 			numPlayers:  2,
-			blind:       []int{10, 5},
+			blind:       []float64{10, 5},
 			raiseSize:   []float64{10.0, 10.0, 20.0, 20.0},
 			firstPlayer: []int{2, 1, 1, 1},
 			maxRaises:   []int{3, 4, 4, 4},
@@ -30,7 +30,7 @@ func ChooseRules(rules string) (*Rules, error) {
 			descr:       "three player limit Texas Hold'em",
 			limit:       true,
 			numPlayers:  3,
-			blind:       []int{5, 10, 0},
+			blind:       []float64{5, 10, 0},
 			raiseSize:   []float64{10.0, 10.0, 20.0, 20.0},
 			firstPlayer: []int{3, 1, 1, 1},
 			maxRaises:   []int{3, 4, 4, 4},
@@ -41,7 +41,7 @@ func ChooseRules(rules string) (*Rules, error) {
 			limit:       false,
 			numPlayers:  2,
 			stack:       []int{20000, 20000},
-			blind:       []int{100, 50},
+			blind:       []float64{100, 50},
 			firstPlayer: []int{2, 1, 1, 1},
 		}, nil
 	case "3p-nl":
@@ -50,7 +50,7 @@ func ChooseRules(rules string) (*Rules, error) {
 			limit:       false,
 			numPlayers:  3,
 			stack:       []int{20000, 20000, 20000},
-			blind:       []int{50, 100, 0},
+			blind:       []float64{50, 100, 0},
 			firstPlayer: []int{3, 1, 1, 1},
 		}, nil
 	}

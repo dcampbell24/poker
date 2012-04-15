@@ -1,13 +1,13 @@
 package main
 
 import (
-	"bytes"
 	"flag"
 	"fmt"
 	"math/rand"
 	"log"
 	"os"
 	"runtime/pprof"
+	"strings"
 
 	"poker/equity"
 	"poker/game"
@@ -20,10 +20,13 @@ type randPlayer struct {
 	Name string
 }
 
-func (_ *randPlayer) Play(g *game.Game) byte {
+func (_ *randPlayer) Observe(_ *game.Game) {}
+
+func (_ *randPlayer) Play(g *game.Game) string {
 	a := g.LegalActions()
-	return a[rand.Intn(len(a))]
+	return string(a[rand.Intn(len(a))])
 }
+
 
 // stratPlayer chooses the action which has the greatest EV based on the 7cHS,
 // pot odds, and an implied call. An an opponent call is included in the EV,
@@ -34,24 +37,33 @@ type stratPlayer struct {
 	equity float64
 }
 
-func (p *stratPlayer) Play(g *game.Game) byte {
-	if len(g.RoundActions()) == 0 {
-		p.equity = equity.HandEquity(g.Cards.Holes[:2], g.Cards.Board, 1000)
+func (this *stratPlayer) Observe(g *game.Game) {
+	if (g.Cards != "") && (g.Round != 4) {
+		this.equity = equity.HandEquity(g.Holes, g.Board, 1000)
+	}
+}
+
+func (this *stratPlayer) Play(g *game.Game) string {
+	if g.Cards != "" {
+		this.equity = equity.HandEquity(g.Holes, g.Board, 1000)
 	}
 
 	max := 0.0 // Folding has EV = 0
-	action := byte('f')
-	if ev := (p.equity * (g.Pot + g.Call)) - g.Call; ev >= max {
-		action = 'c'
+	action := "f"
+	c := g.CallAmt()
+	r := g.RaiseAmt()
+	pot := g.Pot()
+	if ev := (this.equity * (pot + c)) - c; ev >= max {
+		action = "c"
 		max = ev
 	}
-	if (p.equity*(g.Pot+2*g.Raise-g.Call))-g.Raise >= max {
-		action = 'r'
+	if (this.equity*(pot + 2*r - c)) - r >= max {
+		action = "r"
 	}
-	if bytes.IndexByte(g.LegalActions(), action) != -1 {
+	if strings.Contains(g.LegalActions(), action) {
 		return action
 	}
-	return 'c'
+	return "c"
 }
 
 func chooseStrat(name, strat string) (game.Player, error) {
