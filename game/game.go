@@ -142,9 +142,9 @@ func (this *Game) Update(s string) error {
 	}
 	// Handle card updates.
 	if len(this.Cards) > 0 {
+		this.Raises = 0
 		switch this.Round {
 		case PreFlop:
-			this.Raises = 0
 			this.Actor = this.firstPlayer[this.Round] - 1
 			this.pot = 0
 			copy(this.Bets, this.blind)
