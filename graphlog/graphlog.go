@@ -35,6 +35,7 @@ func graphData() error {
 		return err
 	}
 	defer os.Remove(tmp.Name())
+	bufout := bufio.NewWriter(tmp)
 
 	for {
 		line, err := bufin.ReadString('\n')
@@ -60,16 +61,17 @@ func graphData() error {
 				for _, p := range players {
 					index = append(index, p)
 				}
-				fmt.Fprintln(tmp, "# Players:", index)
+				fmt.Fprintln(bufout, "# Players:", index)
 			}
 			count++
-			fmt.Fprintf(tmp, "%d ", count)
+			fmt.Fprintf(bufout, "%d ", count)
 			for _, p := range index {
-				fmt.Fprintf(tmp, "%f ", float64(sums[p])/_SB)
+				fmt.Fprintf(bufout, "%f ", float64(sums[p])/_SB)
 			}
-			fmt.Fprintln(tmp)
+			fmt.Fprintln(bufout)
 		}
 	}
+	// Plotting Code.
 	gp := exec.Command("gnuplot")
 	gpipe, err := gp.StdinPipe()
 	if err != nil {
@@ -83,15 +85,15 @@ func graphData() error {
 	}
 
 	// Do stuff here!
-	fmt.Fprintf(gpipe, "set terminal wxt dashed;")
-	fmt.Fprintf(gpipe, `set xlabel "Hand Number";`)
-	fmt.Fprintf(gpipe, `set ylabel "Score [SB]";`)
-	fmt.Fprintf(gpipe, `set title "%s";`, in.Name())
-	cmd := "plot "
+	cmd := "set t wxt dash;"
+	cmd += `set xl "Hand Number";`
+	cmd += `set yl "Score [SB]";`
+	cmd += fmt.Sprintf(`set title "%s";`, in.Name())
+	cmd += "p "
 	for i, p := range index[:len(index)-1] {
 		cmd += fmt.Sprintf(`"%s" u 1:%d title "%s" w l, `, tmp.Name(), i+2, p)
 	}
-	cmd += fmt.Sprintf(`"%s" u 1:%d title "%s" w l`, tmp.Name(), len(index)+1, index[len(index)-1])
+	cmd += fmt.Sprintf(`"" u 1:%d title "%s" w l`, len(index)+1, index[len(index)-1])
 	fmt.Fprintln(gpipe, cmd)
 
 	stdin := bufio.NewReader(os.Stdin)
