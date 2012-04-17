@@ -1,4 +1,4 @@
-// Functions and structures for calculating the equity of poker hands.
+// Package equity implements functions and structures for calculating the equity of poker hands.
 // The hand evaluation code is based on
 // http://www.codingthewheel.com/archives/poker-hand-evaluator-roundup#2p2
 //

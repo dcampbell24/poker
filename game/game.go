@@ -1,15 +1,14 @@
+// Package game keeps track of basic poker game information. Any Player may use
+// the game.Play function in order to play a game.
 package game
 
 import (
-	"bufio"
 	"fmt"
-	"io"
 	"log"
 	"net"
-	"strings"
-)
 
-const ACPCversion = "VERSION:2.0.0\r\n"
+	"poker/game/diff"
+)
 
 const (
 	PreFlop = iota
@@ -43,21 +42,21 @@ type Game struct {
 	Raises    int       // The number of raises this round.
 	Folded    []bool    // Whether the player in the nth position has folded.
 	Actor     int       // The player whose turn it is to act.
-	*GameDiff           // The most recent changes in game state.
+	diff.Diff           // The most recent changes in game state.
 	*Rules              // The set of rules to use to play the game.
 	pot       float64   // Chips in the pot from previous rounds.
 }
 
-func NewGame(rules string) (*Game, error) {
+func NewGame(rules string, d diff.Diff) (*Game, error) {
 	r, err := ChooseRules(rules)
 	if err != nil {
 		return nil, err
 	}
 	return &Game{
-		Rules:    r,
-		Folded:   make([]bool, r.numPlayers),
-		Bets:     make([]float64, r.numPlayers),
-		GameDiff: new(GameDiff)}, nil
+		Rules:  r,
+		Folded: make([]bool, r.numPlayers),
+		Bets:   make([]float64, r.numPlayers),
+		Diff:   d}, nil
 }
 
 func (this *Game) String() string {
@@ -85,7 +84,7 @@ func (this *Game) LegalActions() string {
 	if this.CallAmt() > 0 {
 		actions += "f"
 	}
-	if this.Raises < this.maxRaises[this.Round] {
+	if this.Raises < this.maxRaises[this.Round()] {
 		actions += "r"
 	}
 	return actions
@@ -102,7 +101,7 @@ func (this *Game) CallAmt() float64 {
 }
 
 func (this *Game) RaiseAmt() float64 {
-	return this.CallAmt() + this.raiseSize[this.Round]
+	return this.CallAmt() + this.raiseSize[this.Round()]
 }
 
 func (this *Game) Pot() float64 {
@@ -113,13 +112,13 @@ func (this *Game) Pot() float64 {
 	return this.pot + sum
 }
 
-func (this *Game) Update(s string) error {
-	err := this.GameDiff.Update(s)
+func (this *Game) Update() error {
+	err := this.Diff.Update()
 	if err != nil {
 		return err
 	}
 	// Handle action updates.
-	switch this.Action {
+	switch this.Action() {
 	case "f":
 		this.Folded[this.Actor] = true
 	case "c":
@@ -141,28 +140,28 @@ func (this *Game) Update(s string) error {
 		}
 	}
 	// Handle card updates.
-	if len(this.Cards) > 0 {
+	if len(this.Cards()) > 0 {
 		this.Raises = 0
-		switch this.Round {
+		switch this.Round() {
 		case PreFlop:
-			this.Actor = this.firstPlayer[this.Round] - 1
+			this.Actor = this.firstPlayer[this.Round()] - 1
 			this.pot = 0
 			copy(this.Bets, this.blind)
-			this.Holes = splitCards(this.Cards)
+			this.Holes = splitCards(this.Cards())
 			this.Board = nil
 			for i := range this.Folded {
 				this.Folded[i] = false
 			}
 		case Flop, Turn, River:
-			this.Actor = this.firstPlayer[this.Round] - 1
+			this.Actor = this.firstPlayer[this.Round()] - 1
 			this.pot = this.Pot()
 			for i := range this.Bets {
 				this.Bets[i] = 0
 			}
-			this.Board = append(this.Board, splitCards(this.Cards)...)
+			this.Board = append(this.Board, splitCards(this.Cards())...)
 		case Showdown:
 			this.Actor = -1
-			this.Holes = splitCards(this.Cards)
+			this.Holes = splitCards(this.Cards())
 		}
 	}
 	return nil
@@ -174,44 +173,29 @@ func (this *Game) Update(s string) error {
 //	host  -- the InetAddress of the dealer passed as a String
 //	port  -- the port the dealer is listening on for the client passed as a String
 func Play(rules string, p Player, host, port string) {
-	game, err := NewGame(rules)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	// Connect to the dealer.
 	addr := net.JoinHostPort(host, port)
-	fmt.Printf("Connecting to dealer at %s...\n", addr)
-	conn, err := net.Dial("tcp", addr)
+	fmt.Printf("Connecting to dealer at %s to play %s...\n", addr, rules)
+	diff, err := diff.NewACPC(addr)
 	if err != nil {
 		log.Fatalln(err)
 	}
-	defer conn.Close()
-
-	// Tell the dealer I am ready to start.
-	fmt.Printf("Starting a game of %s...\n", rules)
-	conn.Write([]byte(ACPCversion))
-
-	// Read replies from dealer one line at a time.
-	reader := bufio.NewReader(conn)
+	game, err := NewGame(rules, diff)
+	if err != nil {
+		log.Fatalln(err)
+	}
 	for {
-		msg, err := reader.ReadString('\n')
-		switch {
-		case err == io.EOF:
-			fmt.Println("Shutting down...")
-			return
-		case err != nil:
-			log.Fatalln(err)
-		// ";" and "#" are comment lines.
-		case len(msg) < 1 || msg[0] == ';' || msg[0] == '#':
-			continue
-		}
-		msg = strings.TrimRight(msg, "\r\n")
-		err = game.Update(msg)
+		err = game.Update()
+		// FIXME Figure out how to implement own errors right.
 		if err != nil {
-			log.Fatalln(err)
+			if err.Error() == "GameOver" {
+				fmt.Println("Game Over")
+				return
+			} else {
+				log.Fatalln(err)
+			}
 		}
-		if game.Actor == game.Position {
-			fmt.Fprintf(conn, "%s:%s\r\n", msg, p.Play(game))
+		if game.Actor == game.Position() {
+			game.Play(p.Play(game))
 		} else {
 			p.Observe(game)
 		}

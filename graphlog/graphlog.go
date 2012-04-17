@@ -95,6 +95,7 @@ func graphData() error {
 	}
 	cmd += fmt.Sprintf(`"" u 1:%d title "%s" w l`, len(index)+1, index[len(index)-1])
 	fmt.Fprintln(gpipe, cmd)
+	fmt.Println("Press _Enter_ to quit.")
 
 	stdin := bufio.NewReader(os.Stdin)
 	for {

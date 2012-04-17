@@ -1,3 +1,5 @@
+// Package comb provides functions for calculating and interating over
+// combinations.
 package comb
 
 import (
