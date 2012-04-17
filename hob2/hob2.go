@@ -38,13 +38,13 @@ type stratPlayer struct {
 }
 
 func (this *stratPlayer) Observe(g *game.Game) {
-	if (g.Cards != "") && (g.Round != 4) {
+	if (g.Cards() != "") && (g.Round() != 4) {
 		this.equity = equity.HandEquity(g.Holes, g.Board, 1000)
 	}
 }
 
 func (this *stratPlayer) Play(g *game.Game) string {
-	if g.Cards != "" {
+	if g.Cards() != "" {
 		this.equity = equity.HandEquity(g.Holes, g.Board, 1000)
 	}
 
