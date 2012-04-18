@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -23,12 +22,10 @@ func graphData() error {
 	sums  := make(map[string]int)
 	index := make([]string, 0)
 
-	in, err := os.Open(os.Args[1])
+	log, err := ioutil.ReadFile(os.Args[1])
 	if err != nil {
 		return err
 	}
-	defer in.Close()
-	bufin := bufio.NewReader(in)
 
 	tmp, err := ioutil.TempFile(".", "acpcLog")
 	if err != nil {
@@ -37,16 +34,9 @@ func graphData() error {
 	defer os.Remove(tmp.Name())
 	bufout := bufio.NewWriter(tmp)
 
-	for {
-		line, err := bufin.ReadString('\n')
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			return err
-		}
-		line = strings.TrimRight(line, "\r\n")
-
-		if line[:len("STATE")] == "STATE" {
+	lines := strings.Split(string(log), "\n")
+	for _, line := range lines {
+		if len(line) > 4 && line[:5] == "STATE" {
 			state := strings.Split(line, ":")
 			scores := strings.Split(state[4], "|")
 			players := strings.Split(state[5], "|")
@@ -71,6 +61,8 @@ func graphData() error {
 			fmt.Fprintln(bufout)
 		}
 	}
+	bufout.Flush()
+	tmp.Close()
 	// Plotting Code.
 	gp := exec.Command("gnuplot")
 	gpipe, err := gp.StdinPipe()
@@ -88,7 +80,7 @@ func graphData() error {
 	cmd := "set t wxt dash;"
 	cmd += `set xl "Hand Number";`
 	cmd += `set yl "Score [SB]";`
-	cmd += fmt.Sprintf(`set title "%s";`, in.Name())
+	cmd += fmt.Sprintf(`set title "%s";`, os.Args[1])
 	cmd += "p "
 	for i, p := range index[:len(index)-1] {
 		cmd += fmt.Sprintf(`"%s" u 1:%d title "%s" w l, `, tmp.Name(), i+2, p)
