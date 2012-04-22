@@ -73,24 +73,20 @@ func TestPHole(test *testing.T) {
 }
 
 func calcErr(hand, board []string, trials int, exp float64) {
-	fmt.Printf("%v  %v  %10d    %+f\n", hand, board, trials, HandEquity(hand, board, trials) - exp)
+	fmt.Printf("%v  %v  %10d    %+f %+f\n", hand, board, trials,
+		exp - HandEquity(hand, board, trials),
+		exp - HandEquityP(hand, board, trials))
 }
 
-func calcErrP(hand, board []string, trials int, exp float64) {
-	fmt.Printf("%v  %v  %10d    %+f\n", hand, board, trials, HandEquityP(hand, board, trials) - exp)
-}
 func testMCHE(hand, board []string) {
 	equity := HandEquity(hand, board, 0)
 	fmt.Printf("%-8s %-14s %-10s %-10s\n", "Hand", "Board", "Trials", "Error")
-	calcErr(hand, board, 1000, equity)
-	calcErr(hand, board, 5000, equity)
-	calcErr(hand, board, 10000, equity)
-	calcErr(hand, board, 50000, equity)
-	fmt.Println()
-	calcErrP(hand, board, 1000, equity)
-	calcErrP(hand, board, 5000, equity)
-	calcErrP(hand, board, 10000, equity)
-	calcErrP(hand, board, 50000, equity)
+	calcErr(hand, board,       1, equity)
+	calcErr(hand, board,      10, equity)
+	calcErr(hand, board,     100, equity)
+	calcErr(hand, board,    1000, equity)
+	calcErr(hand, board,   10000, equity)
+	calcErr(hand, board,  100000, equity)
 	fmt.Println()
 }
 
@@ -98,9 +94,14 @@ func printHE(hand []string, trials int) {
 	fmt.Println(hand, trials, HandEquity(hand, []string{}, trials))
 }
 
+var hole  = []string{"Ad", "Ac"}
+var flopB = []string{"2c", "2d", "3s"}
+var turnB = append(flopB, "7c")
+var rivB  = append(turnB, "9c")
+
 func TestHE(_ *testing.T) {
-	testMCHE([]string{"7d", "6c"}, []string{"2c", "2d", "3s"})
-	testMCHE([]string{"Ad", "Kd"}, []string{"2c", "2d", "3s"})
+	testMCHE([]string{"7d", "6c"}, flopB)
+	testMCHE([]string{"Ad", "Kd"}, flopB)
 	printHE([]string{"Ad", "Ac"}, 10000)
 	printHE([]string{"2d", "2c"}, 10000)
 	printHE([]string{"As", "Ks"}, 10000)
@@ -108,4 +109,42 @@ func TestHE(_ *testing.T) {
 
 func TestNewDeck(_ *testing.T) {
 	fmt.Println(NewDeck(1, 2, 3, 4, 5))
+}
+
+// Benchmarks
+
+func BenchmarkHS_F_0(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		HandEquity(hole, flopB, 0)
+	}
+}
+
+func BenchmarkHE_T_0(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		HandEquity(hole, turnB, 0)
+	}
+}
+
+func BenchmarkHE_R_0(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		HandEquity(hole, rivB, 0)
+	}
+}
+
+func BenchmarkHE_F_1000(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		HandEquity(hole, flopB, 1000)
+	}
+}
+
+func BenchmarkHE_T_1000(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		HandEquity(hole, turnB, 1000)
+	}
+}
+
+func BenchmarkHE_R_1000(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		HandEquity(hole, rivB, 1000)
+	}
 }
