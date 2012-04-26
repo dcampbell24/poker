@@ -1,4 +1,4 @@
-package equity
+package bayes
 
 import (
 	"bytes"
