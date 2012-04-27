@@ -40,6 +40,7 @@ const (
 
 var hr [32487834]int32
 var CTOI map[string]int32
+var ITOC [53]string
 // How many cpus to use for the equity calculations.
 var NCPU int
 var RANDS []*rand.Rand
@@ -65,12 +66,14 @@ func init() {
 	}
 	fmt.Println("Done")
 
-	// Initialize CTOI
+	// Initialize CTOI and ITOC
 	CTOI = make(map[string]int32, 52)
 	var k int32 = 1
 	for i := 0; i < len(ranks); i++ {
 		for j := 0; j < len(suits); j++ {
-			CTOI[string([]byte{ranks[i], suits[j]})] = k
+			card := string([]byte{ranks[i], suits[j]})
+			CTOI[card] = k
+			ITOC[k] = card
 			k++
 		}
 	}
@@ -104,6 +107,14 @@ func cardsToInts(cards []string) []int32 {
 		ints[i] = CTOI[c]
 	}
 	return ints
+}
+
+func intsToCards(ints []int32) []string {
+	cards := make([]string, len(ints), len(ints))
+	for i, c := range ints {
+		cards[i] = ITOC[c]
+	}
+	return cards
 }
 
 // A hand distribution is a category of hands. Currently the only categories
