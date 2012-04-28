@@ -345,12 +345,12 @@ func minus(a, b []int32) []int32 {
 	return c[:count]
 }
 
-// Fisher–Yates shuffle
-// r is the rand.Rand to use.
-func shuffle(a []int32, r int) {
-	for i := len(a) - 1; i > 0; i-- {
-		j := RANDS[r].Intn(i + 1)
-		a[j], a[i] = a[i], a[j]
+// Choose k random items from p and put them in the first k positions of p.
+func sample(p []int32, k int, r int) {
+	size := len(p)
+	for i := 0; i < k; i++ {
+		j := RANDS[r].Intn(size - i)
+		p[i], p[i+j] = p[i+j], p[i]
 	}
 }
 
@@ -390,7 +390,7 @@ func handEquityE(hole, board []int32, bLen int32, deck []int32) float64 {
 func handEquityMC(hole, board []int32, bLen int32, deck []int32, trials, r int) float64 {
 	var sum float64
 	for i := 0; i < trials; i++ {
-		shuffle(deck, r)
+		sample(deck, int(7-bLen), r)
 		copy(board[bLen:], deck[2:8-bLen])
 		sum += EvalHands(board, hole, deck[:2])[0]
 	}

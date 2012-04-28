@@ -119,7 +119,7 @@ func TestHEerr(_ *testing.T) {
 	perror := 0.0
 	for i := 0; i < 1000; i++ {
 		d := NewDeck()
-		shuffle(d, 0)
+		sample(d, 7, 0)
 		df := intsToCards(d)
 		exp := HandEquity(df[:2], df[2:7], 0)
 		act := HandEquity(df[:2], df[2:7], 1000)
