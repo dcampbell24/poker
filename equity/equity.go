@@ -193,21 +193,22 @@ func SplitRank(rank int32) (int32, int32) {
 	return rank >> 12, rank & 0xFFF
 }
 
-// Calculate the percent of the pot each hand wins and return them as a slice.
-func EvalHands(board []int32, hands ...[]int32) []float64 {
+// Calculate the percent of the pot the first player has won.
+func EvalHands(board []int32, hands ...[]int32) float64 {
 	b := evalBoard(board)
 	// Optimize case where there are only two hands.
 	if len(hands) == 2 {
-		result := evalHand(b, hands[0]) - evalHand(b, hands[1])
-		switch {
-		case result > 0:
-			return []float64{1, 0}
-		case result < 0:
-			return []float64{0, 1}
-		default:
-			return []float64{0.5, 0.5}
+		s1 := evalHand(b, hands[0])
+		s2 := evalHand(b, hands[1])
+		if s1 > s2 {
+			return 1.0
 		}
+		if s1 < s2 {
+			return 0.0
+		}
+		return 0.5
 	}
+	// More than two hands.
 	vals := make([]int32, len(hands), len(hands))
 	for i, hand := range hands {
 		vals[i] = evalHand(b, hand)
@@ -223,16 +224,11 @@ func EvalHands(board []int32, hands ...[]int32) []float64 {
 			winners++
 		}
 	}
-	// Alot each winner his share of the pot.
-	result := make([]float64, len(hands), len(hands))
-	for i, v := range vals {
-		if v == max {
-			result[i] = 1.0 / float64(winners)
-		} else {
-			result[i] = 0.0
-		}
+	// Calculate how much the first player has won.
+	if vals[0] == max {
+		return 1.0 / float64(winners)
 	}
-	return result
+	return 0.0
 }
 
 // PHole returns the probability of having a given class of hole cards given
@@ -347,9 +343,8 @@ func minus(a, b []int32) []int32 {
 
 // Choose k random items from p and put them in the first k positions of p.
 func sample(p []int32, k int, r int) {
-	size := len(p)
 	for i := 0; i < k; i++ {
-		j := RANDS[r].Intn(size - i)
+		j := RANDS[r].Intn(len(p) - i)
 		p[i], p[i+j] = p[i+j], p[i]
 	}
 }
@@ -379,7 +374,7 @@ func handEquityE(hole, board []int32, bLen int32, deck []int32) float64 {
 		c2 := comb.Generator(minus(deck, oHole), 5-bLen)
 		for loop2 := true; loop2; {
 			loop2 = c2(board[bLen:])
-			sum += EvalHands(board, hole, oHole)[0]
+			sum += EvalHands(board, hole, oHole)
 			count++
 		}
 	}
@@ -392,7 +387,7 @@ func handEquityMC(hole, board []int32, bLen int32, deck []int32, trials, r int) 
 	for i := 0; i < trials; i++ {
 		sample(deck, int(7-bLen), r)
 		copy(board[bLen:], deck[2:8-bLen])
-		sum += EvalHands(board, hole, deck[:2])[0]
+		sum += EvalHands(board, hole, deck[:2])
 	}
 	return sum / float64(trials)
 }

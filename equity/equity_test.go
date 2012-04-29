@@ -25,7 +25,7 @@ func ExampleEvalHands() {
 	hp := cardsToInts([]string{"Ac", "Ad"})
 	lp := cardsToInts([]string{"2c", "2d"})
 	fmt.Println(EvalHands(board, hp, lp))
-	// Output: [1 0]
+	// Output: 1
 }
 
 func ExampleNewDeck() {
