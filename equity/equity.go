@@ -48,7 +48,7 @@ var RANDS []*rand.Rand
 func init() {
 	fmt.Print("Loading HandRanks.dat... ")
 	// Initialize hr
-	buf := make([]byte, len(hr)*4, len(hr)*4)
+	buf := make([]byte, len(hr)*4)
 	fp, err := os.Open("HandRanks.dat")
 	if err != nil {
 		log.Fatalln(err)
@@ -91,7 +91,7 @@ func init() {
 }
 
 func NewDeck(missing ...int32) []int32 {
-	deck := make([]int32, 52, 52)
+	deck := make([]int32, 52)
 	for i := 0; i < 52; i++ {
 		deck[i] = int32(i + 1)
 	}
@@ -102,7 +102,7 @@ func NewDeck(missing ...int32) []int32 {
 }
 
 func cardsToInts(cards []string) []int32 {
-	ints := make([]int32, len(cards), len(cards))
+	ints := make([]int32, len(cards))
 	for i, c := range cards {
 		ints[i] = CTOI[c]
 	}
@@ -110,7 +110,7 @@ func cardsToInts(cards []string) []int32 {
 }
 
 func intsToCards(ints []int32) []string {
-	cards := make([]string, len(ints), len(ints))
+	cards := make([]string, len(ints))
 	for i, c := range ints {
 		cards[i] = ITOC[c]
 	}
@@ -209,7 +209,7 @@ func EvalHands(board []int32, hands ...[]int32) float64 {
 		return 0.5
 	}
 	// More than two hands.
-	vals := make([]int32, len(hands), len(hands))
+	vals := make([]int32, len(hands))
 	for i, hand := range hands {
 		vals[i] = evalHand(b, hand)
 	}
@@ -322,7 +322,7 @@ func (this *Lottery) Play() string {
 
 // Safe subtraction of integer sets.
 func minus(a, b []int32) []int32 {
-	c := make([]int32, len(a), len(a))
+	c := make([]int32, len(a))
 	var count int
 	var match bool
 	for _, v := range a {
@@ -342,32 +342,29 @@ func minus(a, b []int32) []int32 {
 }
 
 // Choose k random items from p and put them in the first k positions of p.
-func sample(p []int32, k int, r int) {
+func sample(p []int32, k int, r int) []int32 {
 	for i := 0; i < k; i++ {
 		j := RANDS[r].Intn(len(p) - i)
 		p[i], p[i+j] = p[i+j], p[i]
 	}
+	return p[:k]
 }
 
-// Get ready to do the hand equity calculations. Returns hand, board, bLen,
-// deck.
-func handEquityInit(sHand, sBoard []string) ([]int32, []int32, int32, []int32) {
-	// Convert the cards from strings to ints.
+// Get ready to do the hand equity calculations. Returns hand, board, deck.
+func handEquityInit(sHand, sBoard []string) ([]int32, []int32, []int32) {
 	hole := cardsToInts(sHand)
-	bLen := int32(len(sBoard)) // How many cards will we need to draw?
-	board := make([]int32, 5, 5)
-	for i, v := range sBoard {
-		board[i] = CTOI[v]
-	}
-	// Remove the hole and board cards from the deck.
-	deck := NewDeck(append(hole, board[:bLen]...)...)
-	return hole, board, bLen, deck
+	board := make([]int32, len(sBoard), 5)
+	copy(board, cardsToInts(sBoard))
+	deck := NewDeck(append(hole, board...)...)
+	return hole, board, deck
 }
 
 // Exhaustive hand equity calculation.
-func handEquityE(hole, board []int32, bLen int32, deck []int32) float64 {
+func handEquityE(hole, board, deck []int32) float64 {
 	var sum, count float64
-	oHole := make([]int32, 2, 2)
+	bLen := int32(len(board))
+	board = board[:5]
+	oHole := make([]int32, 2)
 	c1 := comb.Generator(deck, 2)
 	for loop1 := true; loop1; {
 		loop1 = c1(oHole)
@@ -382,31 +379,32 @@ func handEquityE(hole, board []int32, bLen int32, deck []int32) float64 {
 }
 
 // Monte-Carlo hand equity calculation.
-func handEquityMC(hole, board []int32, bLen int32, deck []int32, trials, r int) float64 {
+func handEquityMC(hole, board, deck []int32, trials, r int) float64 {
 	var sum float64
+	bLen := len(board)
+	board = board[:5]
 	for i := 0; i < trials; i++ {
-		sample(deck, int(7-bLen), r)
-		copy(board[bLen:], deck[2:8-bLen])
-		sum += EvalHands(board, hole, deck[:2])
+		s := sample(deck, 7-bLen, r)
+		copy(board[bLen:], s[2:])
+		sum += EvalHands(board, hole, s[:2])
 	}
 	return sum / float64(trials)
 }
 
 // Parallel Monte-Carlo hand equity calculation.
-func handEquityMCP(hole, board []int32, bLen int32, deck []int32, trials int,
-c chan float64, i int) {
-	c <- handEquityMC(hole, board, bLen, deck, trials, i)
+func handEquityMCP(hole, board, deck []int32, trials, r int, c chan float64) {
+	c <- handEquityMC(hole, board, deck, trials, r)
 }
 
 // HandEquity returns the equity of a player's hand based on the current
 // board.  trials is the number of Monte-Carlo simulations to do.  If trials
 // is 0, then exhaustive enumeration will be used instead.
 func HandEquity(sHand, sBoard []string, trials int) float64 {
-	hole, board, Blen, deck := handEquityInit(sHand, sBoard)
+	hole, board, deck := handEquityInit(sHand, sBoard)
 	if trials == 0 {
-		return handEquityE(hole, board, Blen, deck)
+		return handEquityE(hole, board, deck)
 	}
-	return handEquityMC(hole, board, Blen, deck, trials, 0)
+	return handEquityMC(hole, board, deck, trials, 0)
 }
 
 // Parallel version of HandEquity.
@@ -414,8 +412,8 @@ func HandEquityP(sHand, sBoard []string, trials int) float64 {
 	trials += trials % NCPU // Round to a multiple of the number of CPUs.
 	c := make(chan float64) // Not buffering
 	for i := 0; i < NCPU; i++ {
-		hole, board, bLen, deck := handEquityInit(sHand, sBoard)
-		go handEquityMCP(hole, board, bLen, deck, trials/NCPU, c, i)
+		hole, board, deck := handEquityInit(sHand, sBoard)
+		go handEquityMCP(hole, board, deck, trials/NCPU, i, c)
 	}
 	sum := 0.0
 	for i := 0; i < NCPU; i++ {
