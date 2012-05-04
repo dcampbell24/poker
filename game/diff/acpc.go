@@ -20,97 +20,80 @@ const (
 	_CARDS
 )
 
-type ACPC struct {
-	position  int      // Position of viewer relative to dealer button.
-	round     int      // 0-4: pre-flop, flop, turn, river, showdown.
-	action    string   // f, c, r.
-	cards     string   // New cards.
-	handNum   string   // Unique identifier for each hand.
-	gstring   string   // The latest game string from the dealer.
-	offsets   [5]int   // Current offsets into the game state string.
-	conn      net.Conn // Connection with the dealer server.
-	bufin     *bufio.Reader // Buffer to read updates from.
-}
-
-func NewACPC(addr string) (*ACPC, error) {
+func NewACPC(addr string) (chan interface{}, chan string, error) {
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// Tell the dealer we are ready to start playing.
 	conn.Write([]byte(ACPCversion))
-	return &ACPC{conn: conn, bufin: bufio.NewReader(conn)}, nil
-}
-
-func (this *ACPC) Play(action string) error {
-	_, err := fmt.Fprintf(this.conn, "%s:%s\r\n", this.gstring, action)
-	return err
-}
-
-func (this *ACPC) Position() int {
-	return this.position
-}
-
-func (this *ACPC) Round() int {
-	return this.round
-}
-
-func (this *ACPC) Action() string {
-	return this.action
-}
-
-func (this *ACPC) Cards() string {
-	return this.cards
-}
-
-func (this *ACPC) Update() error {
-	line, err := this.bufin.ReadString('\n')
-	if err == io.EOF {
-		this.conn.Close() //FIXME Should we close at any other times as well?
-		return new(GameOver)
-	} else if err != nil {
-		return err
-	// ";" and "#" are comment lines.
-	} else if len(line) < 1 || line[0] == ';' || line[0] == '#' {
-		return this.Update()
-	}
-	// Only update the gstring if there game has advanced.
-	this.gstring = strings.TrimRight(line, "\r\n")
-	state := strings.Split(this.gstring, ":")
-	// New hand.
-	if this.handNum != state[_HAND_NUM] {
-		this.handNum = state[_HAND_NUM]
-		this.round = 0
-		this.position, err = strconv.Atoi(state[_POSITION])
-		if err != nil {
-			return fmt.Errorf("Recieved invalid position value %s\n", state[_POSITION])
+	var gstring string
+	in := make(chan string)
+	go func() {
+		for {
+			a := <-in
+			fmt.Fprintf(conn, "%s:%s\r\n", gstring, a)
 		}
-		// New hole cards.
-		this.cards = strings.Trim(state[_CARDS], "/|")
-		this.action = ""
-		for i := range this.offsets {
-			this.offsets[i] = 0
-		}
-	} else {
-		// New action.
-		this.action = strings.TrimRight(state[_BETS][this.offsets[_BETS]:], "/")
-		// New round.
-		if len(state[_CARDS][this.offsets[_CARDS]:]) > 0 {
-			this.round++
-			// New board cards.
-			if this.round != 4 {
-				this.cards = state[_CARDS][this.offsets[_CARDS]:]
-			// Hole cards revealed.
-			} else {
-				this.cards = strings.SplitN(state[_CARDS], "/", 2)[0]
+	}()
+	ch := make(chan interface{}, 3)
+	go func() {
+		var offsets [5]int
+		var state []string
+		var handNum string
+		var position, round int
+		bufin := bufio.NewReader(conn)
+		defer conn.Close()
+		defer close(ch)
+		for {
+			line, err := bufin.ReadString('\n')
+			if err == io.EOF {
+				fmt.Println("Received EOF, shutting down.")
+				return
+			} else if err != nil {
+				fmt.Println("Error during game update:", err)
+				return
+			// ";" and "#" are comment lines.
+			} else if len(line) < 1 || line[0] == ';' || line[0] == '#' {
+				continue
 			}
-		} else {
-			this.cards = ""
+			// Only update the gstring if there game has advanced.
+			gstring = strings.TrimRight(line, "\r\n")
+			state = strings.Split(gstring, ":")
+			// New hand.
+			if handNum != state[_HAND_NUM] {
+				handNum = state[_HAND_NUM]
+				round = 0
+				position, err = strconv.Atoi(state[_POSITION])
+				if err != nil {
+					fmt.Printf("Recieved invalid position value %s\n", state[_POSITION])
+					return
+				}
+				ch <- &Players{Viewer: position}
+				// New hole cards.
+				ch <- Cards(strings.Trim(state[_CARDS], "/|"))
+				for i := range offsets {
+					offsets[i] = 0
+				}
+			} else {
+				// New action.
+				ch <- Action(state[_BETS][offsets[_BETS]])
+				// New round.
+				if len(state[_CARDS][offsets[_CARDS]:]) > 0 {
+					round++
+					// New board cards.
+					if round != 4 {
+						ch <- Cards(state[_CARDS][offsets[_CARDS]:])
+					// Hole cards revealed.
+					} else {
+						ch <- Cards(strings.SplitN(state[_CARDS], "/", 2)[0])
+					}
+				}
+			}
+			// Update offsets.
+			for i := range state {
+				offsets[i] = len(state[i])
+			}
 		}
-	}
-	// Update offsets.
-	for i := range state {
-		this.offsets[i] = len(state[i])
-	}
-	return nil
+	}()
+	return ch, in, nil
 }

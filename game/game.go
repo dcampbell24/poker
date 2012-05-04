@@ -36,27 +36,28 @@ type Player interface {
 }
 
 type Game struct {
+	Round     int       // 0-4: pre-flop, flop, turn, river, showdown.
 	Bets      []float64 // The chips put in for each player this round.
 	Holes     []string  // All of the viewable hole cards.
 	Board     []string  // All of the board cards.
 	Raises    int       // The number of raises this round.
-	Folded    []bool    // Whether the player in the nth position has folded.
+	Actions   []byte    // The last action taken by each player.
 	Actor     int       // The player whose turn it is to act.
-	diff.Diff           // The most recent changes in game state.
 	*Rules              // The set of rules to use to play the game.
 	pot       float64   // Chips in the pot from previous rounds.
+	Event     interface{} // The most recent event
+	*diff.Players
 }
 
-func NewGame(rules string, d diff.Diff) (*Game, error) {
+func NewGame(rules string) (*Game, error) {
 	r, err := ChooseRules(rules)
 	if err != nil {
 		return nil, err
 	}
 	return &Game{
 		Rules:  r,
-		Folded: make([]bool, r.numPlayers),
-		Bets:   make([]float64, r.numPlayers),
-		Diff:   d}, nil
+		Actions: make([]byte, r.numPlayers),
+		Bets:   make([]float64, r.numPlayers)}, nil
 }
 
 func (this *Game) String() string {
@@ -70,8 +71,8 @@ func (this *Game) String() string {
 // NumActive returns how many players are still in the hand.
 func (this *Game) NumActive() int {
 	var count int
-	for _, folded := range this.Folded {
-		if !folded {
+	for _, action := range this.Actions {
+		if action != 'f' {
 			count++
 		}
 	}
@@ -84,7 +85,7 @@ func (this *Game) LegalActions() string {
 	if this.CallAmt() > 0 {
 		actions += "f"
 	}
-	if this.Raises < this.maxRaises[this.Round()] {
+	if this.Raises < this.maxRaises[this.Round] {
 		actions += "r"
 	}
 	return actions
@@ -101,7 +102,7 @@ func (this *Game) CallAmt() float64 {
 }
 
 func (this *Game) RaiseAmt() float64 {
-	return this.CallAmt() + this.raiseSize[this.Round()]
+	return this.CallAmt() + this.raiseSize[this.Round]
 }
 
 func (this *Game) Pot() float64 {
@@ -112,59 +113,91 @@ func (this *Game) Pot() float64 {
 	return this.pot + sum
 }
 
-func (this *Game) Update() error {
-	err := this.Diff.Update()
-	if err != nil {
-		return err
-	}
-	// Handle action updates.
-	switch this.Action() {
-	case "f":
-		this.Folded[this.Actor] = true
-	case "c":
-		this.Bets[this.Actor] += this.CallAmt()
-	case "r":
-		this.Raises++
-		this.Bets[this.Actor] += this.RaiseAmt()
-	}
-	if this.NumActive() < 2 {
-		this.Actor = -1
-	} else {
-		i := this.Actor
-		for {
-			i = (i + 1) % len(this.Folded)
-			if !this.Folded[i] {
-				this.Actor = i
-				break
-			}
+// Is there anyone in the hand who has not acted yet? If not, then does everyone
+// who has not folded have the same amount in the pot?
+// Pre-condition: two players have not folded.
+func (this *Game) evenBets() bool {
+	var j int
+	var b0 float64
+	for i, a := range this.Actions {
+		if a == 0 {
+			return false
+		}
+		if a != 'f' {
+			b0 = this.Bets[i]
+			j = i
+			break
 		}
 	}
-	// Handle card updates.
-	if len(this.Cards()) > 0 {
-		this.Raises = 0
-		switch this.Round() {
-		case PreFlop:
-			this.Actor = this.firstPlayer[this.Round()] - 1
-			this.pot = 0
-			copy(this.Bets, this.blind)
-			this.Holes = splitCards(this.Cards())
-			this.Board = nil
-			for i := range this.Folded {
-				this.Folded[i] = false
+	for i, a := range this.Actions[j+1:] {
+		if a == 0 || (a != 'f' && this.Bets[i+j+1] != b0) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *Game) Update(event interface{}) {
+	this.Event = event
+	switch e := event.(type) {
+	case *diff.Players:
+		this.Players = e
+		this.Round = -1
+		this.pot = 0
+		copy(this.Bets, this.blind)
+		this.Board = nil
+		for i := range this.Actions {
+			this.Actions[i] = 0
+		}
+	case diff.Cards:
+		for i, a := range this.Actions {
+			if a != 'f' {
+				this.Actions[i] = 0
 			}
+		}
+		cards := splitCards(string(e))
+		this.Round++
+		this.Raises = 0
+		switch this.Round {
+		case PreFlop:
+			this.Actor = this.firstPlayer[this.Round] - 1
+			this.Holes = cards
 		case Flop, Turn, River:
-			this.Actor = this.firstPlayer[this.Round()] - 1
+			this.Actor = this.firstPlayer[this.Round] - 1
 			this.pot = this.Pot()
 			for i := range this.Bets {
 				this.Bets[i] = 0
 			}
-			this.Board = append(this.Board, splitCards(this.Cards())...)
+			this.Board = append(this.Board, cards...)
 		case Showdown:
 			this.Actor = -1
-			this.Holes = splitCards(this.Cards())
+			this.Holes = cards
 		}
+	case diff.Action:
+		action := string(e)
+		this.Actions[this.Actor] = action[0]
+		switch action {
+		case "c":
+			this.Bets[this.Actor] += this.CallAmt()
+		case "r":
+			this.Raises++
+			this.Bets[this.Actor] += this.RaiseAmt()
+		}
+		if this.NumActive() < 2  || this.evenBets() {
+			this.Actor = -1
+			return
+		}
+		i := this.Actor
+		for {
+			i = (i + 1) % len(this.Actions)
+			if this.Actions[i] != 'f' {
+				this.Actor = i
+				return
+			}
+		}
+	default:
+		panic("game: Invalid event passed to Update")
 	}
-	return nil
 }
 
 // Start playing a game.
@@ -175,29 +208,21 @@ func (this *Game) Update() error {
 func Play(rules string, p Player, host, port string) {
 	addr := net.JoinHostPort(host, port)
 	fmt.Printf("Connecting to dealer at %s to play %s...\n", addr, rules)
-	diff, err := diff.NewACPC(addr)
+	in, out, err := diff.NewACPC(addr)
 	if err != nil {
 		log.Fatalln(err)
 	}
-	game, err := NewGame(rules, diff)
+	game, err := NewGame(rules)
 	if err != nil {
 		log.Fatalln(err)
 	}
-	for {
-		err = game.Update()
-		// FIXME Figure out how to implement own errors right.
-		if err != nil {
-			if err.Error() == "GameOver" {
-				fmt.Println("Game Over")
-				return
-			} else {
-				log.Fatalln(err)
-			}
-		}
-		if game.Actor == game.Position() {
-			game.Play(p.Play(game))
+	for event := range in {
+		game.Update(event)
+		if game.Actor == game.Viewer {
+			out <- p.Play(game)
 		} else {
 			p.Observe(game)
 		}
 	}
+	fmt.Println("GAME OVER")
 }

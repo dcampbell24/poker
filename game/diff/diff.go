@@ -1,21 +1,18 @@
-// Package diff provides the Diff interface for controlling a Game.
+// Package diff provides the Diff engine for updating a game.
+//
+// The job of a diff engine is to set up and maintain the connection with the
+// dealer if one is needed, to send updates from the dealer, and to recieve
+// Actions from players. When a game has ended, the engine will close the channel
+// on which updates are sent. All updates should be an Action, Cards, or
+// Players.
 package diff
 
-type Diff interface {
-	Play(string) error // Play an Action.
-	Position() int     // Position of viewer relative to dealer button.
-	Round()    int     // 0-4: pre-flop, flop, turn, river, showdown.
-	Action()   string  // f, c, r.
-	Cards()    string  // New Cards.
-	// Update blocks waiting for the next game update. If the game has ended, a
-	// *GameOver struct will be returned that contains any results.
-	Update()   error
-}
-
-type GameOver struct {
-	Results string
-}
-
-func (this *GameOver) Error() string {
-	return "GameOver"
+type Action  string   // f, c, r.
+type Cards   string   // AsKd
+// The names of all the players in the current hand ordered by their
+// position relative to the dealer button. If the players' names are not
+// known, then Names will be nil.
+type Players struct {
+	Names  []string // The names of all the players.
+	Viewer int      // The offset into Names of the viewer.
 }
