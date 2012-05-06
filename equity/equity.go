@@ -322,23 +322,17 @@ func (this *Lottery) Play() string {
 
 // Safe subtraction of integer sets.
 func minus(a, b []int32) []int32 {
-	c := make([]int32, len(a))
-	var count int
-	var match bool
+	c := make([]int32, 0, len(a))
+loop:
 	for _, v := range a {
 		for _, w := range b {
 			if v == w {
-				match = true
-				break
+				continue loop
 			}
 		}
-		if !match {
-			c[count] = v
-			count++
-		}
-		match = false
+		c = append(c, v)
 	}
-	return c[:count]
+	return c
 }
 
 // Choose k random items from p and put them in the first k positions of p.
