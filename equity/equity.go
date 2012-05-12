@@ -29,8 +29,6 @@ import (
 	"io"
 	"log"
 	"runtime"
-
-	"poker/comb"
 )
 
 const (
@@ -254,9 +252,9 @@ func PHole(hd *HandDist, scards []string) float64 {
 		}
 		nextHand:
 	}
-	deck := int64(52 - len(scards))
-	allHands := float64(comb.Count(big.NewInt(deck), big.NewInt(2)).Int64())
-	return float64(len(holes) - elim) / allHands
+	allHands := new(big.Int)
+	allHands.Binomial(int64(52 - len(scards)), 2)
+	return float64(len(holes) - elim) / float64(allHands.Int64())
 }
 
 /*
@@ -348,7 +346,9 @@ func sample(p []int32, k int, r int) []int32 {
 func handEquityInit(sHand, sBoard []string) ([]int32, []int32, []int32) {
 	hole := cardsToInts(sHand)
 	board := make([]int32, len(sBoard), 5)
-	copy(board, cardsToInts(sBoard))
+	for i := range board {
+		board[i] = CTOI[sBoard[i]]
+	}
 	deck := NewDeck(append(hole, board...)...)
 	return hole, board, deck
 }
@@ -359,10 +359,10 @@ func handEquityE(hole, board, deck []int32) float64 {
 	bLen := int32(len(board))
 	board = board[:5]
 	oHole := make([]int32, 2)
-	c1 := comb.Generator(deck, 2)
+	c1 := comb(deck, 2)
 	for loop1 := true; loop1; {
 		loop1 = c1(oHole)
-		c2 := comb.Generator(minus(deck, oHole), 5-bLen)
+		c2 := comb(minus(deck, oHole), 5-bLen)
 		for loop2 := true; loop2; {
 			loop2 = c2(board[bLen:])
 			sum += EvalHands(board, hole, oHole)
