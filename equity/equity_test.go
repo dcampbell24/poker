@@ -2,54 +2,22 @@ package equity
 
 import (
 	"math"
+	"poker/cards"
 	"testing"
 	"fmt"
 )
 
 // Examples
 
-func ExampleNewLottery() {
-	lotto := NewLottery(map[string]float64{"a": 0.4, "b": 0.1, "c": 0.5, "d": 0})
-	fmt.Println(lotto)
-	for i := 0; i < 10; i++ {
-		fmt.Printf("%v ", lotto.Play())
-	}
-	fmt.Println()
-	// Output:
-	// [ a:0.40 c:0.90 b:1.00 ]
-	// c c c c a a a a c c
-}
-
 func ExampleEvalHands() {
-	board := cardsToInts([]string{"4s", "5h", "7d", "8c", "9c"})
-	hp := cardsToInts([]string{"Ac", "Ad"})
-	lp := cardsToInts([]string{"2c", "2d"})
+	board := cards.StoI([]string{"4s", "5h", "7d", "8c", "9c"})
+	hp := cards.StoI([]string{"Ac", "Ad"})
+	lp := cards.StoI([]string{"2c", "2d"})
 	fmt.Println(EvalHands(board, hp, lp))
 	// Output: 1
 }
 
-func ExampleNewDeck() {
-	fmt.Println(NewDeck(1, 2, 3, 4, 5))
-	// Output:
-	// [6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52]
-}
-
 // Tests
-
-func TestParseDist (test *testing.T) {
-	ako := &HandDist{"AKo"}
-	if l := len(ako.Strs()); l != 12 {
-		test.Fatalf("AKo should produce 12 hands, but produced %d\n", l)
-	}
-	aa := &HandDist{"AA"}
-	if l := len(aa.Strs()); l != 6 {
-		test.Fatalf("AA should produce 6 hands, but produced %d\n", l)
-	}
-	aks := &HandDist{"AKs"}
-	if l := len(aks.Strs()); l != 4 {
-		test.Fatalf("AKs should produce 4 hands, but produced %d\n", l)
-	}
-}
 
 func checkCategory(expected int32, hand []string, test *testing.T) {
 	cat, _ := SplitRank(EvalHand(hand))
@@ -73,17 +41,6 @@ func TestEvalHand(test *testing.T) {
 	lp := []string{"2c", "2d", "4s", "5h", "7d", "8c", "9c"} // low pair
 	if EvalHand(hp) <= EvalHand(lp) {
 		test.Fatalf("The high pair %v did not beat the low pair %v.\n", hp, lp)
-	}
-}
-
-func TestPHole(test *testing.T) {
-	p1 := 0.004524886877828055
-	p2 := 0.0024489795918367346
-	if p := PHole(&HandDist{"AA"}, []string{}); p != p1 {
-		test.Fatalf("P(AA) should have been %f, but was %f\n", p1, p)
-	}
-	if p := PHole(&HandDist{"AA"}, []string{"As", "Ks"}); p != p2  {
-		test.Fatal("P(AA | AKs) should have been %f, but was %f.\n", p2, p)
 	}
 }
 
@@ -118,9 +75,9 @@ func TestHEerr(_ *testing.T) {
 	error := 0.0
 	perror := 0.0
 	for i := 0; i < 1000; i++ {
-		d := NewDeck()
+		d := cards.NewDeck()
 		sample(d, 7, 0)
-		df := intsToCards(d)
+		df := cards.ItoS(d)
 		exp := HandEquity(df[:2], df[2:7], 0)
 		act := HandEquity(df[:2], df[2:7], 1000)
 		pact := HandEquityP(df[:2], df[2:7], 1000)
@@ -138,7 +95,6 @@ func TestHE(_ *testing.T) {
 	printHE([]string{"2d", "2c"}, 10000)
 	printHE([]string{"As", "Ks"}, 10000)
 }
-
 
 // Benchmarks
 

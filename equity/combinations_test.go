@@ -11,7 +11,7 @@ func TestComb(test *testing.T) {
 	expTotal.Binomial(int64(len(nums)), 5)
 
 	actTotal := new(big.Int)
-	c := comb(nums, 5)
+	c := Comb(nums, 5)
 	loop := true
 	vals := make([]int32, 5)
 	for loop {

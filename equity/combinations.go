@@ -7,7 +7,7 @@ package equity
 // until none are left, at which point it will return false.
 //
 // This algorithm is based on one from TAOCP Vol. 4 by Donald Knuth.
-func comb(a []int32, k int32) func([]int32) bool {
+func Comb(a []int32, k int32) func([]int32) bool {
 	// There is one way to choose 0 -- the empty set.
 	if k == 0 {
 		return func(_ []int32) bool {

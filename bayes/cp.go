@@ -3,146 +3,148 @@ package bayes
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
-	"strconv"
-	"strings"
+	"math/big"
+	"math/rand"
+	"poker/cards"
 )
 
-type Table struct {
-	Data       []float64
-	Rows, Cols []string // row and column labels
+// A hand distribution is a category of hands. Currently the only categories
+// supported are those of the forms AA, AKo, and AKs.
+type HandDist struct {
+	Dist string
 }
 
-func (this *Table) At(i, j int) float64 {
-	return this.Data[int(i)*len(this.Cols)+j]
-}
-
-func (this *Table) Set(i, j int, v float64) {
-	this.Data[int(i)*len(this.Cols)+j] = v
-}
-
-func sum(nums []float64) float64 {
-	sum := 0.0
-	for _, num := range nums {
-		sum += num
+// Expand the HandDist into a slice of all possible hands.
+func (this *HandDist) Strs() [][]string {
+	hands := make([][]string, 0)
+	// Expand each card into a card of each suit
+	xs := make([]string, 4)
+	ys := make([]string, 4)
+	for i := range cards.Suits {
+		xs[i] = string([]byte{this.Dist[0], cards.Suits[i]})
+		ys[i] = string([]byte{this.Dist[1], cards.Suits[i]})
 	}
-	return sum
-}
-
-// Sums returns the the row and column sums as slices and the grand total.
-func (this *Table) Sums() ([]float64, []float64, float64) {
-	rsums := make([]float64, len(this.Rows))
-	csums := make([]float64, len(this.Cols))
-	for i, val := range this.Data {
-		rsums[int(i)/len(this.Cols)] += val
-		csums[int(i)%len(this.Cols)] += val
-	}
-
-	total := 0.0
-	if len(rsums) <= len(csums) {
-		total = sum(rsums)
-	} else {
-		total = sum(csums)
-	}
-	return rsums, csums, total
-}
-
-// P returns a table showing the probabilities of the row field given the column
-// field.
-func (this *Table) P() *PTable {
-	table := &Table{Data: make([]float64, len(this.Rows)*(len(this.Cols)+1)),
-		Rows: this.Rows, Cols: append(this.Cols, "?")}
-	rsums, csums, total := this.Sums()
-	for i := range this.Rows {
-		table.Set(i, len(table.Cols)-1, rsums[i] / total)
-		for j := range this.Cols {
-			table.Set(i, j, this.At(i, j) / csums[j])
-		}
-	}
-	return &PTable{table}
-}
-
-// PCR returns a table showing the probabilities of the column field given the
-// row field.
-func (this *Table) PCR() *PTable {
-	table := &Table{Data: make([]float64, (len(this.Rows)+1)*len(this.Cols)),
-		Rows: append(this.Rows, "?"), Cols: this.Cols}
-	rsums, csums, total := this.Sums()
-	for j := range this.Cols {
-		table.Set(len(table.Rows)-1, j, csums[j] / total)
-		for i := range this.Rows {
-			table.Set(i, j, this.At(i, j) / rsums[i])
-		}
-	}
-	return &PTable{table}
-}
-
-func (this *Table) String() string {
-	rsums, csums, total := this.Sums()
-	width := len(fmt.Sprintf("%.0f", total))
-	b := new(bytes.Buffer)
-	fmt.Fprintf(b, "%*s", 6, "")
-	for _, col := range append(this.Cols, "totals") {
-		fmt.Fprintf(b, "%-*s  ", width, col)
-	}
-	b.WriteString("\n")
-	for line := range this.Rows {
-		fmt.Fprintf(b, "%-4s  ", this.Rows[line])
-		for i := range this.Cols {
-			fmt.Fprintf(b, "%*.0f  ", width, this.At(line, i))
-		}
-		fmt.Fprintf(b, "%*.0f\n", width, rsums[line])
-	}
-	fmt.Fprintf(b, "%*s", 6, "totals")
-	for _, col := range csums {
-		fmt.Fprintf(b, "%*.0f  ", width, col)
-	}
-	fmt.Fprintf(b, "%*.0f\n", width, total)
-	return b.String()
-}
-
-func ReadTable(file string) (*Table, error) {
-	bs, err := ioutil.ReadFile(file)
-	if err != nil {
-		return nil, err
-	}
-	lines := strings.Split(strings.TrimSpace(string(bs)), "\n")
-	rlbs := strings.Fields(lines[0])
-	table := &Table{Data: make([]float64, len(rlbs)*(len(lines)-1)),
-		Rows: make([]string, len(lines)-1), Cols: rlbs}
-	for i, line := range lines[1:] {
-		fs := strings.Fields(line)
-		table.Rows[i] = fs[0]
-		for j, val := range fs[1:] {
-			v, err := strconv.ParseFloat(val, 64)
-			if err != nil {
-				return nil, err
+	switch {
+	case len(this.Dist) == 2:
+		// pairs e.g. AA
+		for i := 0; i < 3; i++ {
+			for j := i+1; j < 4; j++ {
+				hands = append(hands, []string{xs[i], xs[j]})
 			}
-			table.Set(i, j, v)
+		}
+	case this.Dist[2] == 'o':
+		// offsuit e.g. AKo
+		for i := 0; i < 4; i++ {
+			for j := 0; j < 4; j++ {
+				if i != j {
+					hands = append(hands, []string{xs[i], ys[j]})
+				}
+			}
+		}
+	default:
+		// suited e. g. AKs
+		for i := 0; i < 4; i++ {
+			hands = append(hands, []string{xs[i], ys[i]})
 		}
 	}
-	return table, nil
+	return hands
 }
 
-type PTable struct {
-	*Table
-}
-
-func (this *PTable) String() string {
-	_, _, total := this.Sums()
-	width := len(fmt.Sprintf("%f", total))
-	b := new(bytes.Buffer)
-	fmt.Fprintf(b, "%*s", 6, "")
-	for _, col := range this.Cols {
-		fmt.Fprintf(b, "%-*s  ", width, col)
+// The same as Strs, only return the hands represented by int32.
+func (this *HandDist) Ints() [][]int32 {
+	shands := this.Strs()
+	hands := make([][]int32, len(shands))
+	for i := range shands {
+		hands[i] = cards.StoI(shands[i])
 	}
-	b.WriteString("\n")
-	for line := range this.Rows {
-		fmt.Fprintf(b, "%-4s  ", this.Rows[line])
-		for i := range this.Cols {
-			fmt.Fprintf(b, "%*f  ", width, this.At(line, i))
+	return hands
+}
+
+// PHole returns the probability of having a given class of hole cards given
+// that scards have already been seen.
+//
+// Here are two example calculations:
+//	          Me   Opp  Board  P(AA)
+//	Pre-deal  ??   ??   ???    (4 choose 2) / (52 choose 2) ~= 0.0045
+//	Pre-flop  AKs  ??   ???    (3 choose 2) / (50 choose 2) ~= 0.0024
+func PHole(hd *HandDist, scards []string) float64 {
+	holes := hd.Ints()
+	// Count how many hands to eliminate from the holes class because a card in
+	// that hand has already been seen.
+	elim := 0
+	for _, hand := range holes {
+		for _, card := range hand {
+			for _, seen := range cards.StoI(scards) {
+				if card == seen {
+					elim++
+					goto nextHand
+				}
+			}
 		}
-		b.WriteString("\n")
+		nextHand:
 	}
+	allHands := new(big.Int)
+	allHands.Binomial(int64(52 - len(scards)), 2)
+	return float64(len(holes) - elim) / float64(allHands.Int64())
+}
+
+/*
+// FIXME
+// CondProbs returns the PTable for P(hole | action) given the cards that have
+// currently been seen, and the probabilties P(action) and P(action | hole).
+// The formula for calculating the conditional probability P(hole | action):
+//
+//	                   P(hole) * P(action | hole)
+//	P(hole | action) = --------------------------
+//	                            P(action)
+//
+// Weisstein, Eric W. "Conditional Probability." From MathWorld--A Wolfram Web
+// Resource. http://mathworld.wolfram.com/ConditionalProbability.html
+//
+func CondProbs(scards []string, pActHole *PTable, pAction []float64) *PTable {
+	for _, vals := range actionDist {
+		NewRRSDist(actionDist[:3]...) (* (PHole cards [r1 r2 s]) prob)])]
+  (apply array-map (flatten values))))
+*/
+
+type Lottery struct {
+	// Maybe should use ints or fixed point to make more accurate.
+	probs []float64
+	prizes []string
+}
+
+func (this *Lottery) String() string {
+	b := bytes.NewBufferString("[ ")
+	for i := 0; i < len(this.probs); i++ {
+		fmt.Fprintf(b, "%s:%.2f ", this.prizes[i], this.probs[i])
+	}
+	b.WriteString("]")
 	return b.String()
+}
+
+// Convert a discrete distribution (array-map {item prob}) into a lottery. The
+// probabilities should add up to 1
+func NewLottery(dist map[string] float64) *Lottery {
+	sum := 0.0
+	lotto := &Lottery{}
+	for key, val := range dist {
+		if val != 0 {
+			sum += val
+			lotto.probs = append(lotto.probs, sum)
+			lotto.prizes = append(lotto.prizes, key)
+		}
+	}
+	return lotto
+}
+
+// Draw a winner from a Lottery. If at least one value in the lottery is not >=
+// 1, then the greatest value is effectively rounded up to 1.0"
+func (this *Lottery) Play() string {
+	draw := rand.Float64()
+	for i, p := range this.probs {
+		if p > draw {
+			return this.prizes[i]
+		}
+	}
+	return this.prizes[len(this.prizes)-1]
 }

@@ -21,24 +21,16 @@
 package equity
 
 import (
-	"bytes"
 	"fmt"
-	"math/big"
 	"math/rand"
 	"os"
 	"io"
 	"log"
+	"poker/cards"
 	"runtime"
 )
 
-const (
-	ranks = "23456789TJQKA"
-	suits = "cdhs"
-)
-
 var hr [32487834]int32
-var CTOI map[string]int32
-var ITOC [53]string
 // How many cpus to use for the equity calculations.
 var NCPU int
 var RANDS []*rand.Rand
@@ -64,18 +56,6 @@ func init() {
 	}
 	fmt.Println("Done")
 
-	// Initialize CTOI and ITOC
-	CTOI = make(map[string]int32, 52)
-	var k int32 = 1
-	for i := 0; i < len(ranks); i++ {
-		for j := 0; j < len(suits); j++ {
-			card := string([]byte{ranks[i], suits[j]})
-			CTOI[card] = k
-			ITOC[k] = card
-			k++
-		}
-	}
-
 	// Initialize the PRNGs
 	// BUG(David): The PRNGs are not being used in a way that guarentees their
 	// independence and their state space is much smaller than that of a deck of
@@ -86,85 +66,6 @@ func init() {
 	}
 	runtime.GOMAXPROCS(NCPU)
 	fmt.Printf("Using %d CPUs\n", NCPU)
-}
-
-func NewDeck(missing ...int32) []int32 {
-	deck := make([]int32, 52)
-	for i := 0; i < 52; i++ {
-		deck[i] = int32(i + 1)
-	}
-	if len(missing) > 0 {
-		deck = minus(deck, missing)
-	}
-	return deck
-}
-
-func cardsToInts(cards []string) []int32 {
-	ints := make([]int32, len(cards))
-	for i, c := range cards {
-		ints[i] = CTOI[c]
-	}
-	return ints
-}
-
-func intsToCards(ints []int32) []string {
-	cards := make([]string, len(ints))
-	for i, c := range ints {
-		cards[i] = ITOC[c]
-	}
-	return cards
-}
-
-// A hand distribution is a category of hands. Currently the only categories
-// supported are those of the forms AA, AKo, and AKs.
-type HandDist struct {
-	Dist string
-}
-
-// Expand the HandDist into a slice of all possible hands.
-func (this *HandDist) Strs() [][]string {
-	hands := make([][]string, 0)
-	// Expand each card into a card of each suit
-	xs := make([]string, 4)
-	ys := make([]string, 4)
-	for i := range suits {
-		xs[i] = string([]byte{this.Dist[0], suits[i]})
-		ys[i] = string([]byte{this.Dist[1], suits[i]})
-	}
-	switch {
-	case len(this.Dist) == 2:
-		// pairs e.g. AA
-		for i := 0; i < 3; i++ {
-			for j := i+1; j < 4; j++ {
-				hands = append(hands, []string{xs[i], xs[j]})
-			}
-		}
-	case this.Dist[2] == 'o':
-		// offsuit e.g. AKo
-		for i := 0; i < 4; i++ {
-			for j := 0; j < 4; j++ {
-				if i != j {
-					hands = append(hands, []string{xs[i], ys[j]})
-				}
-			}
-		}
-	default:
-		// suited e. g. AKs
-		for i := 0; i < 4; i++ {
-			hands = append(hands, []string{xs[i], ys[i]})
-		}
-	}
-	return hands
-}
-
-// The same as Strs, only return the hands represented by int32.
-func (this *HandDist) Ints() [][]int32 {
-	shands := this.Strs()
-	hands := make([][]int32, len(shands))
-	for i := range shands {
-		hands[i] = cardsToInts(shands[i])
-	}
-	return hands
 }
 
 func evalBoard(cards []int32) int32 {
@@ -180,11 +81,10 @@ func evalHand(b int32, cards []int32) int32 {
 	return hr[b+cards[1]]
 }
 
-func EvalHand(cards []string) int32 {
-	hand := cardsToInts(cards)
-	return evalHand(evalBoard(hand[:5]), hand[5:])
+func EvalHand(hand []string) int32 {
+	h := cards.StoI(hand)
+	return evalHand(evalBoard(h[:5]), h[5:])
 }
-
 
 // Split a hand rank into two values: category and rank-within-category.
 func SplitRank(rank int32) (int32, int32) {
@@ -229,110 +129,6 @@ func EvalHands(board []int32, hands ...[]int32) float64 {
 	return 0.0
 }
 
-// PHole returns the probability of having a given class of hole cards given
-// that scards have already been seen.
-//
-// Here are two example calculations:
-//	          Me   Opp  Board  P(AA)
-//	Pre-deal  ??   ??   ???    (4 choose 2) / (52 choose 2) ~= 0.0045
-//	Pre-flop  AKs  ??   ???    (3 choose 2) / (50 choose 2) ~= 0.0024
-func PHole(hd *HandDist, scards []string) float64 {
-	holes := hd.Ints()
-	// Count how many hands to eliminate from the holes class because a card in
-	// that hand has already been seen.
-	elim := 0
-	for _, hand := range holes {
-		for _, card := range hand {
-			for _, seen := range cardsToInts(scards) {
-				if card == seen {
-					elim++
-					goto nextHand
-				}
-			}
-		}
-		nextHand:
-	}
-	allHands := new(big.Int)
-	allHands.Binomial(int64(52 - len(scards)), 2)
-	return float64(len(holes) - elim) / float64(allHands.Int64())
-}
-
-/*
-// FIXME
-// CondProbs returns the PTable for P(hole | action) given the cards that have
-// currently been seen, and the probabilties P(action) and P(action | hole).
-// The formula for calculating the conditional probability P(hole | action):
-//
-//	                   P(hole) * P(action | hole)
-//	P(hole | action) = --------------------------
-//	                            P(action)
-//
-// Weisstein, Eric W. "Conditional Probability." From MathWorld--A Wolfram Web
-// Resource. http://mathworld.wolfram.com/ConditionalProbability.html
-//
-func CondProbs(scards []string, pActHole *PTable, pAction []float64) *PTable {
-	for _, vals := range actionDist {
-		NewRRSDist(actionDist[:3]...) (* (PHole cards [r1 r2 s]) prob)])]
-  (apply array-map (flatten values))))
-*/
-
-type Lottery struct {
-	// Maybe should use ints or fixed point to make more accurate.
-	probs []float64
-	prizes []string
-}
-
-func (this *Lottery) String() string {
-	b := bytes.NewBufferString("[ ")
-	for i := 0; i < len(this.probs); i++ {
-		fmt.Fprintf(b, "%s:%.2f ", this.prizes[i], this.probs[i])
-	}
-	b.WriteString("]")
-	return b.String()
-}
-
-// Convert a discrete distribution (array-map {item prob}) into a lottery. The
-// probabilities should add up to 1
-func NewLottery(dist map[string] float64) *Lottery {
-	sum := 0.0
-	lotto := &Lottery{}
-	for key, val := range dist {
-		if val != 0 {
-			sum += val
-			lotto.probs = append(lotto.probs, sum)
-			lotto.prizes = append(lotto.prizes, key)
-		}
-	}
-	return lotto
-}
-
-// Draw a winner from a Lottery. If at least one value in the lottery is not >=
-// 1, then the greatest value is effectively rounded up to 1.0"
-func (this *Lottery) Play() string {
-	draw := rand.Float64()
-	for i, p := range this.probs {
-		if p > draw {
-			return this.prizes[i]
-		}
-	}
-	return this.prizes[len(this.prizes)-1]
-}
-
-// Safe subtraction of integer sets.
-func minus(a, b []int32) []int32 {
-	c := make([]int32, 0, len(a))
-loop:
-	for _, v := range a {
-		for _, w := range b {
-			if v == w {
-				continue loop
-			}
-		}
-		c = append(c, v)
-	}
-	return c
-}
-
 // Choose k random items from p and put them in the first k positions of p.
 func sample(p []int32, k int, r int) []int32 {
 	for i := 0; i < k; i++ {
@@ -344,12 +140,9 @@ func sample(p []int32, k int, r int) []int32 {
 
 // Get ready to do the hand equity calculations. Returns hand, board, deck.
 func handEquityInit(sHand, sBoard []string) ([]int32, []int32, []int32) {
-	hole := cardsToInts(sHand)
-	board := make([]int32, len(sBoard), 5)
-	for i := range board {
-		board[i] = CTOI[sBoard[i]]
-	}
-	deck := NewDeck(append(hole, board...)...)
+	hole := cards.StoI(sHand)
+	board := cards.StoI(sBoard)
+	deck := cards.NewDeck(append(hole, board...)...)
 	return hole, board, deck
 }
 
@@ -357,12 +150,12 @@ func handEquityInit(sHand, sBoard []string) ([]int32, []int32, []int32) {
 func handEquityE(hole, board, deck []int32) float64 {
 	var sum, count float64
 	bLen := int32(len(board))
-	board = board[:5]
+	board = append(board, make([]int32, 5-bLen)...)
 	oHole := make([]int32, 2)
-	c1 := comb(deck, 2)
+	c1 := Comb(deck, 2)
 	for loop1 := true; loop1; {
 		loop1 = c1(oHole)
-		c2 := comb(minus(deck, oHole), 5-bLen)
+		c2 := Comb(cards.Minus(deck, oHole), 5-bLen)
 		for loop2 := true; loop2; {
 			loop2 = c2(board[bLen:])
 			sum += EvalHands(board, hole, oHole)
@@ -376,7 +169,7 @@ func handEquityE(hole, board, deck []int32) float64 {
 func handEquityMC(hole, board, deck []int32, trials, r int) float64 {
 	var sum float64
 	bLen := len(board)
-	board = board[:5]
+	board = append(board, make([]int32, 5-bLen)...)
 	for i := 0; i < trials; i++ {
 		s := sample(deck, 7-bLen, r)
 		copy(board[bLen:], s[2:])
