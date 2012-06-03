@@ -27,6 +27,7 @@ import (
 	"io"
 	"log"
 	"poker/cards"
+	"poker/util"
 	"runtime"
 )
 
@@ -152,10 +153,10 @@ func handEquityE(hole, board, deck []int32) float64 {
 	bLen := int32(len(board))
 	board = append(board, make([]int32, 5-bLen)...)
 	oHole := make([]int32, 2)
-	c1 := Comb(deck, 2)
+	c1 := util.Comb(deck, 2)
 	for loop1 := true; loop1; {
 		loop1 = c1(oHole)
-		c2 := Comb(cards.Minus(deck, oHole), 5-bLen)
+		c2 := util.Comb(cards.Minus(deck, oHole), 5-bLen)
 		for loop2 := true; loop2; {
 			loop2 = c2(board[bLen:])
 			sum += EvalHands(board, hole, oHole)

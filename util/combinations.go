@@ -1,6 +1,6 @@
 // Package comb provides functions for calculating and interating over
 // combinations.
-package equity
+package util
 
 // Comb takes a slice and a number of elements to choose from that slice and
 // returns a function that given a slice will fill it in with a combination
