@@ -36,17 +36,39 @@ type Player interface {
 }
 
 type Game struct {
-	Round     int       // 0-4: pre-flop, flop, turn, river, showdown.
-	Bets      []float64 // The chips put in for each player this round.
-	Holes     []string  // All of the viewable hole cards.
-	Board     []string  // All of the board cards.
-	Raises    int       // The number of raises this round.
-	Actions   []byte    // The last action taken by each player.
-	Actor     int       // The player whose turn it is to act.
-	*Rules              // The set of rules to use to play the game.
-	pot       float64   // Chips in the pot from previous rounds.
-	Event     interface{} // The most recent event
+	Round     int          // 0-4: pre-flop, flop, turn, river, showdown.
+	Bets      [4][]float64 // The chips put in for each player for each round.
+	Holes     []string     // All of the viewable hole cards.
+	Board     []string     // All of the board cards.
+	Raises    int          // The number of raises this round.
+	Actions   []byte       // The last action taken by each player.
+	Actor     int          // The player whose turn it is to act.
+	*Rules                 // The set of rules to use to play the game.
+	Event     interface{}  // The most recent event
 	*diff.Players
+}
+
+// Makes a partial copy of the Game that is specifically suited for creating
+// game trees.
+func (this *Game) Copy() *Game {
+	g := new(Game)
+	g.Round = this.Round
+	for i := range g.Bets {
+		g.Bets[i] = make([]float64, len(this.Bets[0]))
+		copy(g.Bets[i], this.Bets[i])
+	}
+	g.Holes = make([]string, len(this.Holes))
+	copy(g.Holes, this.Holes)
+	g.Board = make([]string, len(this.Board))
+	copy(g.Board, this.Board)
+	g.Raises = this.Raises
+	g.Actions = make([]byte, len(this.Actions))
+	copy(g.Actions, this.Actions)
+	g.Actor = this.Actor
+	g.Rules = this.Rules
+	//Event     interface{}
+	g.Players = this.Players
+	return g
 }
 
 func NewGame(rules string) (*Game, error) {
@@ -54,10 +76,13 @@ func NewGame(rules string) (*Game, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Game{
-		Rules:  r,
-		Actions: make([]byte, r.numPlayers),
-		Bets:   make([]float64, r.numPlayers)}, nil
+	g := new(Game)
+	g.Rules = r
+	g.Actions = make([]byte, r.numPlayers)
+	for i := range g.Bets {
+		g.Bets[i] = make([]float64, r.numPlayers)
+	}
+	return g, nil
 }
 
 func (this *Game) String() string {
@@ -93,12 +118,12 @@ func (this *Game) LegalActions() string {
 
 func (this *Game) CallAmt() float64 {
 	var max float64
-	for _, chips := range this.Bets {
+	for _, chips := range this.Bets[this.Round] {
 		if chips > max {
 			max = chips
 		}
 	}
-	return max - this.Bets[this.Actor]
+	return max - this.Bets[this.Round][this.Actor]
 }
 
 func (this *Game) RaiseAmt() float64 {
@@ -107,10 +132,12 @@ func (this *Game) RaiseAmt() float64 {
 
 func (this *Game) Pot() float64 {
 	var sum float64
-	for _, chips := range this.Bets {
-		sum += chips
+	for _, bets := range this.Bets {
+		for _, chips := range bets {
+			sum += chips
+		}
 	}
-	return this.pot + sum
+	return sum
 }
 
 // Is there anyone in the hand who has not acted yet? If not, then does everyone
@@ -124,13 +151,13 @@ func (this *Game) evenBets() bool {
 			return false
 		}
 		if a != 'f' {
-			b0 = this.Bets[i]
+			b0 = this.Bets[this.Round][i]
 			j = i
 			break
 		}
 	}
 	for i, a := range this.Actions[j+1:] {
-		if a == 0 || (a != 'f' && this.Bets[i+j+1] != b0) {
+		if a == 0 || (a != 'f' && this.Bets[this.Round][i+j+1] != b0) {
 			return false
 		}
 	}
@@ -141,10 +168,15 @@ func (this *Game) Update(event interface{}) {
 	this.Event = event
 	switch e := event.(type) {
 	case *diff.Players:
+		this.Actor = -1
 		this.Players = e
 		this.Round = -1
-		this.pot = 0
-		copy(this.Bets, this.blind)
+		for _, bets := range this.Bets {
+			for i := range bets {
+				bets[i] = 0
+			}
+		}
+		copy(this.Bets[0], this.blind)
 		this.Board = nil
 		for i := range this.Actions {
 			this.Actions[i] = 0
@@ -164,10 +196,6 @@ func (this *Game) Update(event interface{}) {
 			this.Holes = cards
 		case Flop, Turn, River:
 			this.Actor = this.firstPlayer[this.Round] - 1
-			this.pot = this.Pot()
-			for i := range this.Bets {
-				this.Bets[i] = 0
-			}
 			this.Board = append(this.Board, cards...)
 		case Showdown:
 			this.Actor = -1
@@ -178,10 +206,10 @@ func (this *Game) Update(event interface{}) {
 		this.Actions[this.Actor] = action[0]
 		switch action {
 		case "c":
-			this.Bets[this.Actor] += this.CallAmt()
+			this.Bets[this.Round][this.Actor] += this.CallAmt()
 		case "r":
 			this.Raises++
-			this.Bets[this.Actor] += this.RaiseAmt()
+			this.Bets[this.Round][this.Actor] += this.RaiseAmt()
 		}
 		if this.NumActive() < 2  || this.evenBets() {
 			this.Actor = -1
