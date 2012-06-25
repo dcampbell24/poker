@@ -1,0 +1,33 @@
+package util
+
+func d(c, p float64) float64 {
+	d0 := c - p
+	return d0*d0
+}
+
+func sample(p []float64, k int) []float64 {
+	s := make([]float64, k)
+	sm := make(map[float64]bool, k)
+	for i := range s {
+retry:
+		s[i] = p[rand.Intn(len(p))]
+		if sm[s[i]] {
+			goto retry
+		}
+		sm[s[i]] = true
+	}
+	return s
+}
+
+		p[i], p[i+j] = p[i+j], p[i]
+	}
+	return p[:k]
+}
+
+func kmeans(x []float64, k int) {
+	// Forgy method.
+	means := sample(x, k)
+	clusters := make([]int, len(x))
+	for i := range clusters {
+
+
