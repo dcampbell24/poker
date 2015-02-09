@@ -15,8 +15,8 @@ Dependencies
 ------------
 
 The library uses the [2 + 2 hand ranks table][2] to evaluate hands. The table
-table can be generated both in [Windows][3] or [Linux][4] using Wine. Hob2
-expects the table to be in the same directory it is run in.
+can be generated both in [Windows][3] or [Linux][4] using Wine. Hob2 expects
+the table to be in the same directory it is run in.
 
 [2]: http://archives1.twoplustwo.com/showflat.php?Cat=0&Number=8513906&amp;amp;amp;page=2&fpart=1&vc=1
 [3]: http://www.codingthewheel.com/archives/poker-hand-evaluator-roundup#2p2
